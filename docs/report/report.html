@@ -1,0 +1,516 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SlotHub — Design and Technical Report</title>
+<style>
+  @page { size: A4; margin: 15mm 14mm 16mm 14mm; }
+  :root { --ink: #1d2433; --muted: #5b6475; --rule: #d7dbe3; --accent: #1f5fa8; --bg-soft: #f4f6fa; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 9.6pt; line-height: 1.42; color: var(--ink); margin: 0; background: #fff; }
+  h1 { font-size: 20pt; margin: 0 0 4px; }
+  h2 { font-size: 13pt; margin: 18px 0 6px; padding-bottom: 3px; border-bottom: 1.5px solid var(--accent); color: var(--accent); break-after: avoid; }
+  h3 { font-size: 10.5pt; margin: 12px 0 4px; break-after: avoid; }
+  p { margin: 4px 0 7px; }
+  ul, ol { margin: 3px 0 7px; padding-left: 18px; }
+  li { margin: 1px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 5px 0 9px; font-size: 8.6pt; break-inside: auto; }
+  th, td { border: 1px solid var(--rule); padding: 3px 5px; vertical-align: top; text-align: left; }
+  th { background: var(--bg-soft); font-weight: 600; }
+  tr { break-inside: avoid; }
+  code { font-family: Menlo, Consolas, monospace; font-size: 8.3pt; background: var(--bg-soft); padding: 0 2px; border-radius: 2px; }
+  pre { font-family: Menlo, Consolas, monospace; font-size: 7.9pt; background: var(--bg-soft); padding: 6px 8px; border-radius: 3px; white-space: pre-wrap; margin: 4px 0 8px; break-inside: avoid; }
+  .meta { color: var(--muted); font-size: 9pt; margin-bottom: 10px; }
+  .meta td { border: none; padding: 1px 10px 1px 0; }
+  .figure { margin: 6px 0 10px; text-align: center; break-inside: avoid; }
+  .figure .caption { font-size: 8.3pt; color: var(--muted); margin-top: 2px; }
+  .mermaid { display: flex; justify-content: center; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .callout { border-left: 3px solid var(--accent); background: var(--bg-soft); padding: 5px 8px; margin: 6px 0 9px; font-size: 9pt; break-inside: avoid; }
+  .todo { background: #fff3c4; padding: 0 3px; }
+  .pagebreak { break-before: page; }
+  .small { font-size: 8.4pt; }
+  .toc { columns: 2; font-size: 9pt; margin: 4px 0 8px; }
+</style>
+</head>
+<body>
+
+<h1>SlotHub — Design and Technical Report</h1>
+<table class="meta">
+  <tr><td><b>Course</b></td><td>Scalable Services (SEZG583), Assignment 1</td></tr>
+  <tr><td><b>Team</b></td><td><span class="todo">[Member 1 (ID)], [Member 2 (ID)], [Member 3 (ID)], [Member 4 (ID)]</span></td></tr>
+  <tr><td><b>Repository</b></td><td><span class="todo">[GitHub URL]</span></td></tr>
+  <tr><td><b>Demo video and documents</b></td><td><span class="todo">[Google Drive link]</span> (see §10)</td></tr>
+  <tr><td><b>Stack</b></td><td>.NET 10, ASP.NET Core minimal APIs, EF Core 10, PostgreSQL 17, Polly (resilience), Serilog, xUnit, Testcontainers, Docker Compose</td></tr>
+</table>
+
+<div class="toc">
+1. Problem and scope<br>2. Service decomposition<br>3. Architecture<br>4. Data design<br>5. API design<br>
+6. Engineering challenges<br>7. Testing<br>8. Design decisions and trade-offs<br>9. Limitations and future work<br>10. Links<br>
+Appendices: A Contributions · B Reflections · C AI-use declaration · D Business-rule traceability · E How to run
+</div>
+
+<h2>1. Problem and scope</h2>
+<p><b>SlotHub</b> is a multi-tenant booking platform for any business that sells time, such as clinics, salons, sports turfs and tutors.
+A business (<i>tenant</i>) publishes slots for its resources (a doctor, a court). A customer holds a slot, pays, and receives
+an SMS/email confirmation. An unpaid hold is released automatically. The domain was chosen because it naturally contains
+every distributed-systems problem the brief asks for, and because one engine can later serve many industries as a product.</p>
+
+<table>
+  <tr><th style="width:24%">Assignment condition</th><th>How SlotHub meets it</th></tr>
+  <tr><td>(a) ≥ 4 services</td><td>Scheduling, Booking, Payment (mock gateway), Notification (mock SMS/email): four distinct responsibilities, four databases</td></tr>
+  <tr><td>(b) Transaction over ≥ 3 services</td><td>Book: Booking → Scheduling (hold) → Payment (charge) → Scheduling (confirm) → Notification (via outbox)</td></tr>
+  <tr><td>(c) Contended resource</td><td>Slot capacity (1 for a doctor, N for a class)</td></tr>
+  <tr><td>(d) Unsafe to repeat</td><td>Creating a booking, paying, cancelling, charging, refunding</td></tr>
+  <tr><td>(e) Slow / failing dependency</td><td>Mock payment gateway and SMS provider with runtime failure and latency injection (<code>PUT /api/v1/admin/chaos</code>)</td></tr>
+</table>
+
+<h3>Business rules</h3>
+<table>
+  <tr><th style="width:6%">ID</th><th>Rule</th><th style="width:15%">Owner</th></tr>
+  <tr><td>BR1</td><td>A slot never has more active holds (HELD + CONFIRMED) than its capacity.</td><td>Scheduling</td></tr>
+  <tr><td>BR2</td><td>A hold expires after <code>HOLD_TTL_SECONDS</code> (30 s in the demo) if not confirmed and its capacity is returned; a confirmed hold is never expired.</td><td>Scheduling</td></tr>
+  <tr><td>BR3</td><td>A booking is confirmed only after a successful payment and while its hold is active; a payment that completes after the hold expired is refunded automatically.</td><td>Booking</td></tr>
+  <tr><td>BR4</td><td>The same <code>Idempotency-Key</code> with the same payload returns the original result with no new effect; with a different payload it is rejected (422).</td><td>Booking, Payment</td></tr>
+  <tr><td>BR5</td><td>Cancellation refund: ≥ 24 h before the slot 100 %, &lt; 24 h 50 %, after start not allowed.</td><td>Booking</td></tr>
+  <tr><td>BR6</td><td>A slot that has already started cannot be held.</td><td>Scheduling</td></tr>
+</table>
+<p><b>Assumptions.</b> Fixed price per service offering, snapshotted onto the hold. Integer minor units (paise). UTC timestamps.
+Customers are identified by ID plus phone/email in the request. <b>Out of scope</b> (per brief): authentication, UI, real payment/SMS
+integration. Assignment 2 deployment (Minikube) is not part of this report; Dockerfiles exist only to run the stack locally.</p>
+
+<h2>2. Service decomposition</h2>
+<table>
+  <tr><th style="width:14%">Service</th><th style="width:34%">Responsibility (one sentence)</th><th>Owns</th><th style="width:20%">Does not own</th></tr>
+  <tr><td><b>Scheduling</b> :5101</td><td>Defines what a tenant offers and when, and controls how much of each slot is left.</td><td>Tenants, resources, offerings, prices, slots, holds; hold expiry</td><td>Bookings, money</td></tr>
+  <tr><td><b>Booking</b> :5102</td><td>Takes a booking from request to confirmation or cancellation, orchestrating the others.</td><td>Bookings, state machine, status history, outbox, idempotency keys</td><td>Capacity, payments</td></tr>
+  <tr><td><b>Payment</b> :5103</td><td>Charges and refunds money exactly once per request (mock gateway).</td><td>Payments, refunds, idempotency keys, chaos settings</td><td>Why money moved</td></tr>
+  <tr><td><b>Notification</b> :5104</td><td>Delivers customer messages once and retries failed deliveries.</td><td>Messages, delivery attempts, templates, chaos settings</td><td>Booking state</td></tr>
+</table>
+<p><b>Why these boundaries.</b> We split by business capability and by rate of change. Catalog and availability are one service
+(Scheduling) because a service's duration defines how its slots are cut, so they always change together. Splitting them
+would create a distributed monolith and add a hop to every booking. Booking is the only orchestrator: it is the one place
+that knows the end-to-end flow and its compensations. The other services expose small, reusable, idempotent capabilities.
+Payment is separate because it is the slow/failing dependency and money needs its own audit trail and idempotency. Notification is
+separate because its failure must never affect a booking and its channels will multiply independently.</p>
+<p><b>Alternatives rejected.</b> (1) Separate Catalog and Availability services: they change together, and one more network hop. (2) Payment inside
+Booking: it loses the failing-dependency boundary and the second idempotency layer. (3) A Customer service: it would be a CRUD
+wrapper while authentication is out of scope. (4) Choreography with events only: the flow and its compensation would be
+scattered across services and harder to test (see D2).</p>
+
+<h2>3. Architecture</h2>
+<div class="figure">
+<pre class="mermaid">
+flowchart LR
+  client["API client<br/>(scripts / Postman)"]
+  subgraph slothub["SlotHub (Docker Compose)"]
+    booking["Booking :5102<br/>orchestrator"]
+    scheduling["Scheduling :5101"]
+    payment["Payment (mock) :5103"]
+    notification["Notification (mock) :5104"]
+    bdb[("booking_db")]
+    sdb[("scheduling_db")]
+    pdb[("payment_db")]
+    ndb[("notification_db")]
+  end
+  client -- "HTTP/JSON: bookings, pay, cancel" --> booking
+  client -- "HTTP/JSON: tenants, slots" --> scheduling
+  booking -- "HTTP/JSON: hold, confirm, release<br/>(timeout · retry · circuit breaker)" --> scheduling
+  booking -- "HTTP/JSON: charge, refund<br/>Idempotency-Key pay-/refund-{id}" --> payment
+  booking -. "HTTP/JSON via outbox (async)" .-> notification
+  booking --- bdb
+  scheduling --- sdb
+  payment --- pdb
+  notification --- ndb
+</pre>
+<div class="caption">Figure 1 — Components. Solid arrows: synchronous REST calls (direction = caller → callee), all carrying <code>X-Correlation-Id</code>. Dotted: asynchronous delivery from Booking's transactional outbox. Each database has its own user; no service reads another's database.</div>
+</div>
+<p>The longest synchronous chain is <b>client → Booking → Scheduling or Payment</b> (depth 2). Booking calls downstream services
+one after another, never through each other. Every service exposes <code>GET /health</code> (liveness) and <code>/health/ready</code> (own database).
+It reads all configuration from environment variables and writes structured JSON logs carrying the correlation ID it received or generated.
+That ID is forwarded on every outgoing call. Inside each service: <code>Api</code> (HTTP, validation) → <code>Domain</code> (entities, state machines,
+rules; no framework dependencies) ← <code>Infrastructure</code> (EF Core, HTTP clients, background workers).</p>
+
+<h3>Main transaction: happy path</h3>
+<div class="figure">
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant C as Client
+  participant B as Booking
+  participant S as Scheduling
+  participant P as Payment
+  participant N as Notification
+  C->>B: POST /bookings (Idempotency-Key K1)
+  B->>B: claim K1 · booking PENDING
+  B->>S: POST /holds {slotId, bookingId}
+  S->>S: UPDATE … WHERE reserved < capacity (atomic) · hold HELD
+  S-->>B: 201 hold, price, expiresAt
+  B-->>C: 201 booking HELD (holdExpiresAt)
+  C->>B: POST /bookings/{id}/payment (K2)
+  B->>P: POST /payments (Idempotency-Key pay-{id})
+  P-->>B: 201 SUCCEEDED
+  B->>S: POST /holds/{id}/confirm
+  S-->>B: 200 CONFIRMED
+  B->>B: booking CONFIRMED + outbox row (one DB transaction)
+  B-->>C: 200 CONFIRMED
+  B--)N: outbox dispatcher: POST /notifications
+  N-->>B: 202 (deduplicated, delivered with retries)
+</pre>
+<div class="caption">Figure 2 — Two-step checkout (hold, then pay), as on a real payment page; it gives the hold a real lifetime for Challenge 3B.</div>
+</div>
+
+<h3>Main transaction: failure paths</h3>
+<div class="figure">
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant C as Client
+  participant B as Booking
+  participant P as Payment
+  participant S as Scheduling
+  C->>B: POST /bookings/{id}/payment
+  rect rgba(230,150,40,0.15)
+  note over B,P: A. Gateway down
+  B->>P: charge (pay-{id}) → 503
+  B->>P: retry ×3, exponential backoff + jitter (same key) → 503
+  note over B: circuit opens at ≥50 % failures, booking stays HELD
+  B-->>C: 503 — retry later with same key is safe
+  end
+  rect rgba(220,60,60,0.12)
+  note over B,S: B. Declined
+  B->>P: charge → 402 PAYMENT_DECLINED
+  B->>S: release hold (capacity back)
+  B-->>C: 402, booking FAILED
+  end
+  rect rgba(120,60,200,0.12)
+  note over B,S: C. Paid after the hold expired (compensation)
+  B->>P: charge → 201 (slow)
+  B->>S: confirm → 409 HOLD_EXPIRED
+  B->>P: refund (refund-{id})
+  B-->>C: 409 HOLD_EXPIRED, booking EXPIRED, refunded
+  end
+</pre>
+<div class="caption">Figure 3 — Failure paths, all demonstrated by scripts (e2e sections 2–3, Challenge 3B section E).</div>
+</div>
+
+<h3>State machines</h3>
+<div class="two">
+<div class="figure">
+<pre class="mermaid">
+stateDiagram-v2
+  [*] --> PENDING
+  PENDING --> HELD: hold ok
+  PENDING --> REJECTED: slot full / past
+  PENDING --> FAILED: Scheduling down
+  HELD --> CONFIRMED: paid + hold confirmed
+  HELD --> FAILED: payment declined
+  HELD --> EXPIRED: hold TTL passed
+  HELD --> CANCELLED: customer
+  CONFIRMED --> CANCELLED: refund per BR5
+</pre>
+<div class="caption">Booking (<code>BookingStateMachine</code>)</div>
+</div>
+<div class="figure">
+<pre class="mermaid">
+stateDiagram-v2
+  [*] --> HELD: capacity reserved
+  HELD --> CONFIRMED: before expiresAt
+  HELD --> RELEASED: cancel / declined
+  HELD --> EXPIRED: expiry worker
+  CONFIRMED --> RELEASED: cancellation
+</pre>
+<div class="caption">Hold (<code>Hold</code>). RELEASED/EXPIRED return capacity once.</div>
+</div>
+</div>
+<p>Any other transition is rejected with <code>409 INVALID_STATE_TRANSITION</code>. Payment: PENDING → SUCCEEDED | FAILED; SUCCEEDED →
+PARTIALLY_REFUNDED → REFUNDED. Notification message: PENDING → SENT | FAILED_RETRYING → SENT | DEAD.</p>
+
+<h2>4. Data design</h2>
+<div class="two">
+<div class="figure">
+<pre class="mermaid">
+erDiagram
+  TENANT ||--o{ RESOURCE : has
+  TENANT ||--o{ SERVICE_OFFERING : offers
+  RESOURCE ||--o{ SLOT : provides
+  SLOT ||--o{ HOLD : "reserved by"
+  SLOT { uuid id PK
+    uuid resource_id FK
+    timestamptz start_at
+    int capacity
+    int reserved_count }
+  HOLD { uuid id PK
+    uuid slot_id FK
+    uuid booking_id "ref, unique"
+    string status
+    bigint price_minor
+    timestamptz expires_at }
+</pre>
+<div class="caption">scheduling_db. CHECK 0 ≤ reserved_count ≤ capacity; EXCLUDE (resource_id, tstzrange) prevents overlapping slots.</div>
+</div>
+<div class="figure">
+<pre class="mermaid">
+erDiagram
+  BOOKING ||--o{ STATUS_HISTORY : records
+  BOOKING { uuid id PK
+    uuid slot_id "ref"
+    uuid hold_id "ref"
+    uuid payment_id "ref"
+    string status
+    bigint amount_minor
+    int version
+    timestamptz locked_until }
+  STATUS_HISTORY { bigint id PK
+    string to_status
+    string correlation_id }
+  OUTBOX_MESSAGE { uuid id PK
+    jsonb payload
+    timestamptz processed_at }
+  IDEMPOTENCY_KEY { string key PK
+    string scope PK
+    string request_hash
+    int response_status }
+</pre>
+<div class="caption">booking_db (outbox and idempotency keys live with the data they protect).</div>
+</div>
+</div>
+<div class="two">
+<div class="figure">
+<pre class="mermaid">
+erDiagram
+  PAYMENT ||--o{ REFUND : has
+  PAYMENT { uuid id PK
+    uuid booking_id "ref"
+    bigint amount_minor
+    bigint refunded_minor
+    string status }
+  REFUND { uuid id PK
+    bigint amount_minor }
+  IDEMPOTENCY_KEY { string key PK
+    string scope PK }
+</pre>
+<div class="caption">payment_db. CHECK refunded_minor ≤ amount_minor.</div>
+</div>
+<div class="figure">
+<pre class="mermaid">
+erDiagram
+  MESSAGE ||--o{ DELIVERY_ATTEMPT : has
+  MESSAGE { uuid id PK
+    uuid booking_id "ref"
+    string event_type
+    string channel
+    string status
+    int attempts }
+  DELIVERY_ATTEMPT { bigint id PK
+    bool success
+    string error }
+</pre>
+<div class="caption">notification_db. UNIQUE (booking_id, event_type, channel) suppresses duplicates.</div>
+</div>
+</div>
+<p><b>Ownership and cross-service references.</b> Four databases on one PostgreSQL server locally, each with its own login. The init
+script revokes <code>CONNECT</code> from <code>PUBLIC</code>, and we verified that <code>booking_user</code> cannot connect to <code>scheduling_db</code>. There are no foreign keys across
+services: references (<code>slot_id</code>, <code>hold_id</code>, <code>payment_id</code>, <code>booking_id</code>) are plain UUIDs. Data a service needs at transaction
+time is copied as a <b>snapshot</b>: the hold snapshots the price and slot start, and the booking copies them. Booking can then apply
+BR5 without calling Scheduling, and a later price change never alters an existing booking. Enums are stored as UPPER_SNAKE_CASE text,
+the same as in JSON, so database rows read like API responses.</p>
+
+<h2>5. API design</h2>
+<table class="small">
+  <tr><th style="width:13%">Service</th><th>Endpoints (all under <code>/api/v1</code>)</th></tr>
+  <tr><td>Scheduling</td><td><code>POST/GET /tenants</code>, <code>POST/GET /tenants/{id}/resources</code>, <code>POST/GET /tenants/{id}/offerings</code>, <code>POST /slots</code> (batch), <code>GET /slots?tenantId&amp;resourceId&amp;from&amp;to&amp;available</code>, <code>GET /slots/{id}</code>, <code>POST /holds</code>, <code>GET /holds/{id}</code>, <code>POST /holds/{id}/confirm</code>, <code>POST /holds/{id}/release</code>, <code>POST /admin/holds/expire-now</code></td></tr>
+  <tr><td>Booking</td><td><code>POST /bookings</code>*, <code>GET /bookings/{id}</code>, <code>GET /bookings?customerId&amp;status</code>, <code>POST /bookings/{id}/payment</code>*, <code>POST /bookings/{id}/cancel</code>*</td></tr>
+  <tr><td>Payment</td><td><code>POST /payments</code>*, <code>GET /payments/{id}</code>, <code>GET /payments?bookingId</code>, <code>POST /payments/{id}/refunds</code>*, <code>GET/PUT /admin/chaos</code></td></tr>
+  <tr><td>Notification</td><td><code>POST /notifications</code> (202), <code>GET /notifications/{id}</code>, <code>GET /notifications?bookingId</code>, <code>GET/PUT /admin/chaos</code></td></tr>
+</table>
+<p class="small">* requires <code>Idempotency-Key</code>. Status codes: 201 created, 200 OK/replay, 202 accepted, 400 validation, 402 declined, 404 not found,
+409 business conflict, 422 key reused with a different payload, 503/504 downstream unavailable/timeout. OpenAPI 3 documents:
+<code>docs/openapi/{scheduling,booking,payment,notification}.json</code> (UI at <code>/scalar</code> on each service).</p>
+<div class="two">
+<pre>POST /api/v1/bookings
+Idempotency-Key: 7d9f1c2e-…
+X-Correlation-Id: demo-001
+{ "tenantId": "01a1…", "slotId": "01a1…",
+  "customer": { "id": "c-1001",
+                "phone": "+919800000001" } }
+
+201 Created
+{ "id": "01a16ce6-720f…", "status": "HELD",
+  "holdId": "01a16ce6-7215…", "amountMinor": 50000,
+  "currency": "INR",
+  "holdExpiresAt": "2026-10-24T07:53:54Z",
+  "history": [ {"to":"PENDING"}, {"to":"HELD"} ] }</pre>
+<pre>409 Conflict   (application/problem+json)
+{ "type": "https://slothub.dev/errors/slot-unavailable",
+  "title": "Slot unavailable",
+  "status": 409,
+  "detail": "Slot 01a1… has no remaining capacity.",
+  "instance": "/api/v1/holds",
+  "code": "SLOT_UNAVAILABLE",
+  "correlationId": "c1-20261024T085619Z-7" }
+
+400 → also "errors": { "Name": ["'Name' must not be empty."] }</pre>
+</div>
+<p><b>Error model.</b> All four services return RFC 9457 Problem Details through one shared handler, including validation errors (FluentValidation), malformed
+JSON and unknown routes. Each response has a stable machine-readable <code>code</code> (a catalogue in <code>ErrorCodes</code>) and the <code>correlationId</code>.
+Downstream errors keep their code when Booking passes them on: <code>SLOT_UNAVAILABLE</code> from Scheduling reaches the client unchanged.</p>
+
+<h2>6. Engineering challenges</h2>
+<h3>Challenge 1: Concurrency control (BR1)</h3>
+<p><b>Problem.</b> Many customers try to hold the last unit of a slot at the same instant. <b>Design.</b> Check and increment are one SQL statement:
+<code>UPDATE slots SET reserved_count = reserved_count + 1 WHERE id = @slot AND reserved_count &lt; capacity AND start_at &gt; now()</code>.
+PostgreSQL row-locks the slot during the update, so concurrent requests queue. Each re-evaluates the <code>WHERE</code> against the committed
+value, and 0 rows affected means <code>409 SLOT_UNAVAILABLE</code>. The hold insert is in the same transaction, and a CHECK constraint is a
+second line of defence. <b>Why check-then-update fails:</b> with <code>if (slot.Reserved &lt; slot.Capacity) { slot.Reserved++; Save(); }</code>,
+every request reads 0, every request passes the check, and every request writes 1. We built that version behind <code>CONCURRENCY_MODE=naive</code> to show it.</p>
+<table class="small">
+  <tr><th>Evidence (<code>evidence/challenge-1-concurrency/</code>)</th><th>Result</th></tr>
+  <tr><td>20 simultaneous requests, capacity 1 (FIFO barrier releases all at once)</td><td>1 × 201, 19 × 409 SLOT_UNAVAILABLE; reserved_count = 1; one HELD row</td></tr>
+  <tr><td>30 simultaneous requests, capacity 5</td><td>5 × 201, 25 × 409; reserved_count = 5</td></tr>
+  <tr><td>Same 20 requests against the naive instance</td><td><b>20 holds for capacity 1</b>, reserved_count = 1 (lost updates)</td></tr>
+  <tr><td>Integration test, real PostgreSQL: 20 and 50 parallel reservations</td><td>exactly capacity reserved</td></tr>
+</table>
+<p><b>Alternatives.</b> <code>SELECT … FOR UPDATE</code> then update: correct, but two round trips and a longer lock. Optimistic version column: correct, but most
+requests fail and retry under contention. One row per seat with a unique constraint: right for numbered seats, overkill for counts.
+Distributed lock (Redis): extra infrastructure when the database is already the source of truth. <b>Limitation:</b> one very hot slot is bounded by row-lock throughput.</p>
+
+<h3>Challenge 2: Idempotency (BR4)</h3>
+<p><b>Design.</b> A shared middleware handles endpoints marked unsafe. It (1) fingerprints the request: SHA-256 of method, path and
+canonical JSON, so key order and whitespace do not matter. (2) It runs <code>INSERT … ON CONFLICT DO NOTHING</code> on <code>(key, scope)</code> in the service's
+own <code>idempotency_keys</code> table, so the unique key <i>is</i> the lock. Two identical requests at the same moment cannot both win. (3) The
+winner runs, and its status and body are stored. A repeat is replayed with <code>Idempotency-Replayed: true</code>. A different fingerprint gets 422.
+A request still in progress gets <code>409 REQUEST_IN_PROGRESS</code> with <code>Retry-After</code>. A 5xx releases the key, so the client may retry. Booking calls Payment
+with <b>derived keys</b> <code>pay-{bookingId}</code> and <code>refund-{bookingId}</code>, so even Booking's own retries cannot double-charge.
+Payment finishes an in-flight charge even if the caller disconnects: we found that otherwise an empty body was stored and replayed.</p>
+<table class="small">
+  <tr><th>Evidence (<code>evidence/challenge-2-idempotency/</code>, 20/20 checks)</th><th>Result</th></tr>
+  <tr><td>Same key + body ×3</td><td>All 201; 2nd and 3rd replayed with an identical body hash; 1 booking row</td></tr>
+  <tr><td>Same key, different body / no key</td><td>422 IDEMPOTENCY_KEY_MISMATCH / 400 IDEMPOTENCY_KEY_REQUIRED; no row created</td></tr>
+  <tr><td>10 identical POST /bookings at the same instant</td><td>1 × 201, 9 × 409 REQUEST_IN_PROGRESS; 1 booking, 1 hold</td></tr>
+  <tr><td>10 identical POST /payment at the same instant; repeat; new key</td><td>1 payment row, 50 000 charged once; replay; still one charge</td></tr>
+  <tr><td>Integration tests (API + PostgreSQL), 20 simultaneous charges</td><td>exactly one payment; 5xx releases the key</td></tr>
+</table>
+<p><b>Alternatives.</b> In-memory cache: lost on restart, not shared across replicas. Redis: extra infrastructure, and it separates the key from the data it protects.
+A unique business constraint alone (e.g. one payment per booking) does not return the original response. <b>Limitation:</b> keys are scoped per path, not per client (no authentication). They are deleted after 24 h.</p>
+
+<h3>Challenge 3B: Time-bound holds (BR2), with BR3 compensation</h3>
+<p><b>Design.</b> Each hold has <code>expires_at = now + TTL</code>. A background worker (every 5 s, also exposed as <code>POST /admin/holds/expire-now</code>) claims due
+holds with <code>SELECT … WHERE status = 'HELD' AND expires_at &lt;= now FOR UPDATE SKIP LOCKED</code>. It applies the domain rule <code>Hold.Expire()</code> and
+returns capacity in the same transaction. <b>Safe to run twice:</b> only HELD rows qualify, so a second run finds nothing.
+<b>Never releases a paid slot:</b> confirm takes the row lock and requires <code>expires_at &gt; now</code>, so confirm and expiry race on one row and exactly one wins.
+<b>Multi-replica safe:</b> SKIP LOCKED lets several sweepers split the work. Booking treats Scheduling as the source of truth: its reconciler asks for the hold
+before marking a booking EXPIRED, so two clocks can never disagree. If payment lands after expiry, the confirm fails and Booking refunds automatically.</p>
+<table class="small">
+  <tr><th>Evidence (<code>evidence/challenge-3b-holds/</code>, 18/18 checks, TTL 30 s)</th><th>Result</th></tr>
+  <tr><td>Unpaid hold</td><td>EXPIRED by the worker; capacity 1 → 0; booking EXPIRED; BOOKING_EXPIRED notification</td></tr>
+  <tr><td>Sweep run twice</td><td>Second run expires 0; capacity not released twice</td></tr>
+  <tr><td>Paid hold after TTL + sweeps</td><td>Still CONFIRMED, capacity still 1</td></tr>
+  <tr><td>Cancel while HELD</td><td>RELEASED immediately, capacity 0</td></tr>
+  <tr><td>Payment started 26 s in, gateway 6 s slow</td><td>Attempt timeout, retries poll REQUEST_IN_PROGRESS, stored charge replayed; confirm → HOLD_EXPIRED; refunded; booking EXPIRED</td></tr>
+  <tr><td>Integration: 4 concurrent sweepers over 10 due holds</td><td>Each hold expired exactly once; capacity 0</td></tr>
+</table>
+<p><b>Alternatives.</b> A per-hold timer in memory: lost on restart, not shared. A broker's delayed messages: a new dependency, and still needs an
+idempotent consumer. Database TTL/cron: same SQL, less visible. <b>Limitations:</b> expiry granularity is the sweep interval (a hold can live up to TTL + 5 s;
+confirmation enforces the exact TTL). A refund that fails after a late payment is only logged.</p>
+<div class="callout"><b>Beyond the required challenges.</b> Booking's calls to Scheduling and Payment use timeouts (2 s per attempt), retries with exponential backoff and jitter,
+and a circuit breaker (Polly). The e2e script shows the circuit opening during a gateway outage (<code>DOWNSTREAM_CIRCUIT_OPEN</code>) and closing after 15 s;
+the retry with the same key then charges exactly once. This is the Challenge 3A bonus behaviour, kept safe by Challenge 2.</div>
+
+<h2>7. Testing</h2>
+<table class="small">
+  <tr><th style="width:20%">Level</th><th>What</th><th style="width:24%">Result</th></tr>
+  <tr><td>Unit (xUnit)</td><td>Business rules named <code>BRn_…</code>, state machines, refund policy, fingerprinting, retry backoff, templates; Booking orchestration with in-memory fakes (declined, gateway down, late payment, lease busy, reconciliation)</td><td>90 pass (Scheduling 24, Booking 42, Payment 8, Notification 11, BuildingBlocks 5)</td></tr>
+  <tr><td>Integration (Testcontainers, real PostgreSQL)</td><td>Atomic hold under 20/50-way concurrency; expiry run twice, confirmed untouched, 4 concurrent sweepers; Payment API idempotency (replay, 422, 400, 20 simultaneous, 5xx release)</td><td>9 pass</td></tr>
+  <tr><td>End-to-end script</td><td>Hold → pay → confirm → SMS + email; declined → FAILED, capacity restored; gateway down → 503, HELD, circuit open, recovery, one charge</td><td>26/26 checks</td></tr>
+  <tr><td>Challenge scripts</td><td>§6</td><td>C1 PASS, C2 20/20, C3B 18/18</td></tr>
+  <tr><td>Postman (newman)</td><td>38 requests covering happy path and errors</td><td>71/71 assertions</td></tr>
+  <tr><td>Fresh-copy check</td><td>Clean copy of the repository on a new database volume, following only the README</td><td>All of the above pass</td></tr>
+</table>
+<p>CI (GitHub Actions) restores, builds with warnings as errors and runs all tests on every push and PR. <code>scripts/run-all-checks.sh</code> regenerates all
+evidence in about three minutes. The tests found real defects during development: the empty replay body after a client timeout,
+the circuit breaker needing a recovery window, and two script bugs.</p>
+
+<h2>8. Design decisions and trade-offs</h2>
+<table class="small">
+  <tr><th style="width:4%">#</th><th style="width:17%">Decision</th><th style="width:25%">Options</th><th>Choice and rationale</th></tr>
+  <tr><td>D1</td><td>Number of services</td><td>5 (separate Catalog) vs 4</td><td><b>4.</b> Catalog and availability change together; one fewer hop; can be split later if catalog reads dominate.</td></tr>
+  <tr><td>D2</td><td>Coordination</td><td>Orchestration vs choreography</td><td><b>Orchestration in Booking.</b> The flow and its compensation (release, refund) are explicit, in one place and unit-testable. Choreography would need a broker and scatter the logic.</td></tr>
+  <tr><td>D3</td><td>Communication</td><td>Sync REST vs async messaging</td><td><b>Sync REST</b> where the customer waits (hold, pay, confirm); <b>outbox + async dispatch</b> for notifications so an SMS outage never blocks or undoes a booking. The outbox maps directly to a broker later.</td></tr>
+  <tr><td>D4</td><td>Concurrency</td><td>Pessimistic lock, optimistic version, atomic conditional update</td><td><b>Atomic conditional update</b> for the contended slot (one statement, shortest lock, no retry storm); row locks for low-contention hold/payment updates.</td></tr>
+  <tr><td>D5</td><td>Idempotency storage</td><td>Memory, Redis, own DB table</td><td><b>Own DB table per service.</b> Survives restarts, works across replicas, keeps database-per-service, no new infrastructure.</td></tr>
+  <tr><td>D6</td><td>Checkout shape</td><td>One-shot vs hold-then-pay</td><td><b>Hold-then-pay.</b> Mirrors real payment pages, gives holds a real lifetime, and makes the late-payment case visible and handled.</td></tr>
+  <tr><td>D7</td><td>Serialising work on one booking</td><td>DB lock across HTTP calls, version only, lease</td><td><b>Short lease (<code>locked_until</code>) + version.</b> No DB lock is held while calling other services; a crashed operation's lease simply expires.</td></tr>
+  <tr><td>D8</td><td>Multi-tenancy</td><td>DB per tenant vs <code>tenant_id</code> column</td><td><b><code>tenant_id</code> on every row.</b> Cheapest to run; large tenants can move to dedicated databases later.</td></tr>
+</table>
+
+<h2>9. Limitations and future work</h2>
+<ul>
+  <li>No authentication: <code>tenantId</code> and <code>customerId</code> are trusted from the request. Next step: OIDC with tenant claims at an API gateway.</li>
+  <li>Synchronous orchestration: if Scheduling or Payment is down, new bookings fail fast (503) rather than queue. Timeouts, retries and the circuit breaker bound the impact.</li>
+  <li>A refund that fails after a late payment is only logged (manual follow-up); next: refunds through the outbox. Retrying a cancellation across the 24 h boundary computes a different refund and gets 422.</li>
+  <li>Slots are created explicitly; recurring schedules, waitlists, memberships and discounts are planned as new services, not rewrites.</li>
+  <li>One PostgreSQL server hosts the four databases locally (separate logins). Separate instances, a broker (RabbitMQ via the outbox) and OpenTelemetry tracing are the next scaling steps.</li>
+</ul>
+
+<h2>10. Links</h2>
+<table class="small">
+  <tr><td style="width:30%">Google Drive (video, report, other documents)</td><td><span class="todo">[link]</span></td></tr>
+  <tr><td>Demo video (8–10 min)</td><td><span class="todo">[link]</span></td></tr>
+  <tr><td>Source code</td><td><span class="todo">[GitHub URL]</span> — README, <code>docs/</code>, <code>evidence/</code>, <code>postman/</code></td></tr>
+</table>
+
+<div class="pagebreak"></div>
+<h2>Appendix A — Contribution table</h2>
+<table class="small">
+  <tr><th>Member (ID)</th><th>Owned</th><th>Reviewed</th><th>Report / video parts</th><th>Share</th></tr>
+  <tr><td><span class="todo">[Member 1]</span></td><td>Scheduling service, Challenge 1</td><td>Booking</td><td>§2, §6 C1</td><td><span class="todo">[%]</span></td></tr>
+  <tr><td><span class="todo">[Member 2]</span></td><td>Booking service, Challenge 3B</td><td>Scheduling</td><td>§3, §6 C3B</td><td><span class="todo">[%]</span></td></tr>
+  <tr><td><span class="todo">[Member 3]</span></td><td>Payment service, idempotency (Challenge 2)</td><td>Notification</td><td>§5, §6 C2</td><td><span class="todo">[%]</span></td></tr>
+  <tr><td><span class="todo">[Member 4]</span></td><td>Notification service, platform, tests and evidence</td><td>Payment</td><td>§4, §7</td><td><span class="todo">[%]</span></td></tr>
+</table>
+<p class="small">The split above is a suggestion matching one-service-per-member; replace it with what each member actually did (commit history is checked).</p>
+
+<h2>Appendix B — Individual reflections</h2>
+<p class="small">Half a page each: what I built, the hardest problem I solved, what I would change.</p>
+<p><b><span class="todo">[Member 1]</span>.</b> <span class="todo">[reflection]</span></p>
+<p><b><span class="todo">[Member 2]</span>.</b> <span class="todo">[reflection]</span></p>
+<p><b><span class="todo">[Member 3]</span>.</b> <span class="todo">[reflection]</span></p>
+<p><b><span class="todo">[Member 4]</span>.</b> <span class="todo">[reflection]</span></p>
+
+<h2>Appendix C — AI-use declaration</h2>
+<table class="small">
+  <tr><th style="width:22%">Tool</th><th>Used for</th></tr>
+  <tr><td>Claude (Anthropic), via Claude Code</td><td>Domain brainstorming and service decomposition options; drafting the architecture document and backlog; generating
+  most of the C# code, EF Core migrations, tests, scripts, Postman collection and this report's first draft; diagnosing failures found by the tests.</td></tr>
+  <tr><td><span class="todo">[other tools, if any]</span></td><td><span class="todo">[…]</span></td></tr>
+</table>
+<p class="small">Every member reviewed, ran and can explain the code they present in the demo. All design decisions in §8 were discussed and accepted
+by the team. <span class="todo">[Team to confirm or edit this statement.]</span></p>
+
+<h2>Appendix D — Business-rule traceability</h2>
+<table class="small">
+  <tr><th style="width:5%">BR</th><th style="width:43%">Code</th><th>Tests and evidence</th></tr>
+  <tr><td>BR1</td><td><code>Scheduling.Infrastructure/Persistence/Repositories.cs</code> (<code>HoldRepository.ReserveAsync</code>) + CHECK constraint</td><td><code>HoldConcurrencyTests.BR1_ParallelHolds_NeverExceedCapacity</code>, <code>BookingServiceTests.BR1_*</code>, challenge1 scripts</td></tr>
+  <tr><td>BR2</td><td><code>Scheduling.Domain/Holds/Hold.cs</code> (<code>Confirm</code>, <code>Expire</code>), <code>HoldRepository.ExpireDueAsync</code>, <code>HoldExpiryWorker</code></td><td><code>HoldTests.BR2_*</code> (7), <code>HoldConcurrencyTests.BR2_*</code> (2), challenge3b script</td></tr>
+  <tr><td>BR3</td><td><code>Booking.Domain/Bookings/Booking.cs</code> (<code>EnsurePayable</code>, <code>Confirm</code>), <code>BookingService.PayAsync</code></td><td><code>BookingTests.BR3_*</code>, <code>BookingServiceTests.BR3_*</code>, challenge3b section E</td></tr>
+  <tr><td>BR4</td><td><code>shared/BuildingBlocks/Idempotency/*</code>, derived keys in <code>Booking.Infrastructure/Clients/PaymentClient.cs</code></td><td><code>RequestFingerprintTests.BR4_*</code>, <code>Payment.IntegrationTests/IdempotencyTests.BR4_*</code>, challenge2 script</td></tr>
+  <tr><td>BR5</td><td><code>Booking.Domain/Bookings/RefundPolicy.cs</code>, <code>BookingService.CancelAsync</code></td><td><code>RefundPolicyTests.BR5_*</code>, <code>BookingServiceTests.BR5_*</code>, Postman "Cancel → refund per BR5"</td></tr>
+  <tr><td>BR6</td><td><code>Scheduling.Domain/Slots/Slot.cs</code> (<code>HasStarted</code>, <code>CanBeHeld</code>), SQL <code>start_at &gt; now()</code></td><td><code>SlotTests.BR6_*</code></td></tr>
+</table>
+
+<h2>Appendix E — How to run</h2>
+<pre>docker compose up -d --build --wait     # PostgreSQL (4 DBs, 4 users) + 4 services on localhost:5101–5104
+./scripts/run-all-checks.sh             # tests, e2e, Challenges 1/2/3B, Postman, logs → evidence/
+dotnet test SlotHub.slnx                # 99 tests (Docker needed for the integration tests)</pre>
+<p class="small">Full instructions, every environment variable and troubleshooting: <code>README.md</code>. Evidence index: <code>evidence/README.md</code>.</p>
+
+<script src="assets/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({ startOnLoad: false, theme: "neutral", securityLevel: "loose",
+    flowchart: { htmlLabels: true, curve: "basis" }, sequence: { mirrorActors: false, messageFontSize: 11, actorFontSize: 12 },
+    er: { fontSize: 11 }, fontFamily: "Helvetica Neue, Arial, sans-serif" });
+  mermaid.run({ querySelector: ".mermaid" }).then(() => { document.body.dataset.rendered = "true"; });
+</script>
+</body>
+</html>

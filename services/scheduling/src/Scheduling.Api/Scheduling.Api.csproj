@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <ProjectReference Include="..\Scheduling.Infrastructure\Scheduling.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

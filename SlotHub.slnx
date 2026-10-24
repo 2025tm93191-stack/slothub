@@ -1,0 +1,36 @@
+<Solution>
+  <Folder Name="/services/" />
+  <Folder Name="/services/booking/">
+    <Project Path="services/booking/src/Booking.Api/Booking.Api.csproj" />
+    <Project Path="services/booking/src/Booking.Domain/Booking.Domain.csproj" />
+    <Project Path="services/booking/src/Booking.Infrastructure/Booking.Infrastructure.csproj" />
+    <Project Path="services/booking/tests/Booking.UnitTests/Booking.UnitTests.csproj" />
+  </Folder>
+  <Folder Name="/services/notification/">
+    <Project Path="services/notification/src/Notification.Api/Notification.Api.csproj" />
+    <Project Path="services/notification/src/Notification.Domain/Notification.Domain.csproj" />
+    <Project Path="services/notification/src/Notification.Infrastructure/Notification.Infrastructure.csproj" />
+    <Project Path="services/notification/tests/Notification.UnitTests/Notification.UnitTests.csproj" />
+  </Folder>
+  <Folder Name="/services/payment/">
+    <Project Path="services/payment/src/Payment.Api/Payment.Api.csproj" />
+    <Project Path="services/payment/src/Payment.Domain/Payment.Domain.csproj" />
+    <Project Path="services/payment/src/Payment.Infrastructure/Payment.Infrastructure.csproj" />
+    <Project Path="services/payment/tests/Payment.IntegrationTests/Payment.IntegrationTests.csproj" />
+    <Project Path="services/payment/tests/Payment.UnitTests/Payment.UnitTests.csproj" />
+  </Folder>
+  <Folder Name="/services/scheduling/">
+    <Project Path="services/scheduling/src/Scheduling.Api/Scheduling.Api.csproj" />
+    <Project Path="services/scheduling/src/Scheduling.Domain/Scheduling.Domain.csproj" />
+    <Project Path="services/scheduling/src/Scheduling.Infrastructure/Scheduling.Infrastructure.csproj" />
+    <Project Path="services/scheduling/tests/Scheduling.IntegrationTests/Scheduling.IntegrationTests.csproj" />
+    <Project Path="services/scheduling/tests/Scheduling.UnitTests/Scheduling.UnitTests.csproj" />
+  </Folder>
+  <Folder Name="/shared/">
+    <Project Path="shared/BuildingBlocks.Domain/BuildingBlocks.Domain.csproj" />
+    <Project Path="shared/BuildingBlocks/BuildingBlocks.csproj" />
+  </Folder>
+  <Folder Name="/shared/tests/">
+    <Project Path="shared/tests/BuildingBlocks.UnitTests/BuildingBlocks.UnitTests.csproj" />
+  </Folder>
+</Solution>

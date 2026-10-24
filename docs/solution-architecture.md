@@ -145,7 +145,8 @@ flowchart LR
     notification --- ndb
 ```
 
-- All arrows are synchronous **REST over HTTP** with JSON bodies, carrying `X-Correlation-Id`.
+- Scheduling and Payment calls use synchronous REST over HTTP with JSON bodies and `X-Correlation-Id`.
+- Notification delivery is dispatched asynchronously through Booking's transactional outbox.
 - No service reads another service's database. Each database has its own credentials.
 - The longest call chain in one user request is **Client → Booking → {Scheduling | Payment}** (depth 2). Booking calls downstream services one after another, never through each other.
 
@@ -628,7 +629,7 @@ RETURNING reserved_count;
 | One row per seat + unique constraint | Good for numbered seats; overkill for capacity counts |
 | Distributed lock (Redis) | Extra infrastructure; the database is already the source of truth |
 
-**Evidence plan.** `scripts/challenge1-concurrency` fires 20+ parallel `POST /holds` (or `POST /bookings`) for capacity 1 and 5; asserts exactly *N* × `201`, rest `409`; dumps `slots` and `holds` rows afterwards.
+**Evidence plan.** `scripts/challenge1-concurrency.sh` fires 20+ parallel `POST /holds` (or `POST /bookings`) for capacity 1 and 5; asserts exactly *N* × `201`, rest `409`; dumps `slots` and `holds` rows afterwards.
 
 ### 9.2 Challenge 2 — Idempotency (Booking and Payment, BR4)
 
@@ -733,6 +734,7 @@ slothub/
 ├── docker-compose.yml              PostgreSQL with 4 databases / 4 users (host port 5440)
 ├── docs/
 │   ├── solution-architecture.md    this document
+│   ├── product-backlog.md          agile sprint plan and backlog
 │   ├── diagrams/                   exported Mermaid / draw.io
 │   ├── openapi/                    scheduling.json, booking.json, payment.json, notification.json
 │   └── report/                     final PDF

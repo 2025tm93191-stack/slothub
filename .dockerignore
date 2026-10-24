@@ -1,0 +1,14 @@
+**/bin/
+**/obj/
+**/.env
+**/.vs/
+**/.vscode/
+**/.idea/
+**/*.user
+.git/
+.github/
+docs/
+evidence/
+scripts/
+postman/
+*.docx

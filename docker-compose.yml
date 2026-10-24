@@ -1,0 +1,108 @@
+# Local stack for SlotHub.
+#   docker compose up -d --build --wait   → PostgreSQL + all 4 services (APIs on localhost:5101-5104)
+#   docker compose up -d --wait postgres  → only the database (then run services with scripts/run-service.sh)
+#
+# One PostgreSQL server hosting four databases, each owned by its own user.
+# A user can connect only to its own database (CONNECT revoked from PUBLIC).
+name: slothub
+
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: slothub-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:-postgres}
+      SCHEDULING_DB_PASSWORD: ${SCHEDULING_DB_PASSWORD:-scheduling_pw}
+      BOOKING_DB_PASSWORD: ${BOOKING_DB_PASSWORD:-booking_pw}
+      PAYMENT_DB_PASSWORD: ${PAYMENT_DB_PASSWORD:-payment_pw}
+      NOTIFICATION_DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD:-notification_pw}
+    ports:
+      - "${POSTGRES_PORT:-5440}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_ADMIN_USER:-postgres}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  scheduling:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: services/scheduling/Dockerfile
+    image: slothub-scheduling
+    container_name: slothub-scheduling
+    environment:
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=scheduling_db;Username=scheduling_user;Password=${SCHEDULING_DB_PASSWORD:-scheduling_pw};GSS Encryption Mode=Disable
+      DB_MIGRATE_ON_STARTUP: "true"
+      HOLD_TTL_SECONDS: ${HOLD_TTL_SECONDS:-30}
+      HOLD_SWEEP_INTERVAL_SECONDS: ${HOLD_SWEEP_INTERVAL_SECONDS:-5}
+    ports:
+      - "5101:8080"
+
+  booking:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: services/booking/Dockerfile
+    image: slothub-booking
+    container_name: slothub-booking
+    environment:
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=booking_db;Username=booking_user;Password=${BOOKING_DB_PASSWORD:-booking_pw};GSS Encryption Mode=Disable
+      DB_MIGRATE_ON_STARTUP: "true"
+      Services__Scheduling__BaseUrl: http://scheduling:8080
+      Services__Payment__BaseUrl: http://payment:8080
+      Services__Notification__BaseUrl: http://notification:8080
+      HTTP_ATTEMPT_TIMEOUT_SECONDS: ${HTTP_ATTEMPT_TIMEOUT_SECONDS:-2}
+      HTTP_MAX_RETRIES: ${HTTP_MAX_RETRIES:-3}
+      HTTP_TOTAL_TIMEOUT_SECONDS: ${HTTP_TOTAL_TIMEOUT_SECONDS:-20}
+      HOLD_SAFETY_MARGIN_SECONDS: ${HOLD_SAFETY_MARGIN_SECONDS:-3}
+      HOLD_SWEEP_INTERVAL_SECONDS: ${HOLD_SWEEP_INTERVAL_SECONDS:-5}
+    ports:
+      - "5102:8080"
+
+  payment:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: services/payment/Dockerfile
+    image: slothub-payment
+    container_name: slothub-payment
+    environment:
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=payment_db;Username=payment_user;Password=${PAYMENT_DB_PASSWORD:-payment_pw};GSS Encryption Mode=Disable
+      DB_MIGRATE_ON_STARTUP: "true"
+      CHAOS_FAILURE_RATE: ${PAYMENT_CHAOS_FAILURE_RATE:-0}
+      CHAOS_LATENCY_MS: ${PAYMENT_CHAOS_LATENCY_MS:-0}
+      CHAOS_FAILURE_MODE: ${PAYMENT_CHAOS_FAILURE_MODE:-DECLINE}
+    ports:
+      - "5103:8080"
+
+  notification:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: services/notification/Dockerfile
+    image: slothub-notification
+    container_name: slothub-notification
+    environment:
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=notification_db;Username=notification_user;Password=${NOTIFICATION_DB_PASSWORD:-notification_pw};GSS Encryption Mode=Disable
+      DB_MIGRATE_ON_STARTUP: "true"
+      NOTIFY_MAX_ATTEMPTS: ${NOTIFY_MAX_ATTEMPTS:-5}
+      CHAOS_FAILURE_RATE: ${NOTIFICATION_CHAOS_FAILURE_RATE:-0}
+      CHAOS_LATENCY_MS: ${NOTIFICATION_CHAOS_LATENCY_MS:-0}
+      CHAOS_FAILURE_MODE: ERROR
+    ports:
+      - "5104:8080"
+
+volumes:
+  postgres-data:

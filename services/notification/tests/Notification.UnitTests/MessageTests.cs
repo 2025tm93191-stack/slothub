@@ -89,6 +89,27 @@ public class MessageTests
     }
 
     [Fact]
+    public void BookingReminderTemplate_RendersBookingIdAndSlotStart()
+    {
+        var bookingId = Guid.NewGuid();
+        var data = new Dictionary<string, string> { ["slotStart"] = "26 Oct 2026, 10:00 AM" };
+
+        var body = MessageTemplates.Render(EventType.BookingReminder, bookingId, data);
+
+        Assert.Equal($"Reminder: your booking {bookingId} is scheduled for 26 Oct 2026, 10:00 AM.", body);
+    }
+
+    [Fact]
+    public void BookingReminderTemplate_KeepsMissingSlotStartPlaceholder()
+    {
+        var bookingId = Guid.NewGuid();
+
+        var body = MessageTemplates.Render(EventType.BookingReminder, bookingId, null);
+
+        Assert.Equal($"Reminder: your booking {bookingId} is scheduled for {{slotStart}}.", body);
+    }
+
+    [Fact]
     public void Template_ExistsForEveryEventType()
     {
         foreach (var eventType in Enum.GetValues<EventType>())

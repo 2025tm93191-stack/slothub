@@ -8,6 +8,7 @@ public enum EventType
     BookingCancelled,
     BookingExpired,
     PaymentFailed,
+    BookingReminder,
 }
 
 public enum Channel

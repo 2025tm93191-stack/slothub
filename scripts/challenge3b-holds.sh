@@ -38,6 +38,7 @@ api POST "$BOOKING_URL/api/v1/bookings/$c_booking/payment" "" "$(uuid)"
 echo "  C (paid at once): booking $c_booking → $(field .status)"
 new_booking d; d_booking=$BOOKING d_hold=$HOLD d_slot=$SLOT
 new_booking e; e_booking=$BOOKING e_hold=$HOLD e_slot=$SLOT
+e_expiry_epoch=$(date -u -d "$(field .holdExpiresAt)" +%s)
 echo "  E (pays late):    booking $e_booking"
 
 section "D. Cancellation releases the hold immediately"
@@ -47,9 +48,17 @@ check "booking D" CANCELLED "$(field .status)"
 check "hold D" RELEASED "$(hold_status "$d_hold")"
 check "slot D reserved right after cancel" 0 "$(slot_reserved "$d_slot")"
 
-section "E. Late payment: start paying $((ttl - 4))s after the hold, gateway takes 6s → completes after expiry"
-sleep $((t0 + ttl - 4 - $(date +%s)))
-set_chaos payment 0 6000 DECLINE
+section "E. Late payment: start 6s before hold expiry, gateway takes 9s"
+
+delay=$((e_expiry_epoch - 6 - $(date +%s)))
+
+if (( delay <= 0 )); then
+    echo "Not enough time remaining before hold expiry"
+    exit 1
+fi
+
+sleep "$delay"
+set_chaos payment 0 9000 DECLINE
 api POST "$BOOKING_URL/api/v1/bookings/$e_booking/payment" "" "$(uuid)"
 set_chaos payment 0 0 DECLINE
 check "late pay → 409" 409 "$HTTP_STATUS"

@@ -41,7 +41,8 @@ public sealed class PaymentApiFixture : IAsyncLifetime
     }
 }
 
-public class IdempotencyTests(PaymentApiFixture fixture) : IClassFixture<PaymentApiFixture>
+[Collection("Payment API")]
+public class IdempotencyTests(PaymentApiFixture fixture)
 {
     private static HttpRequestMessage Charge(Guid bookingId, string key, long amount = 50_000)
     {

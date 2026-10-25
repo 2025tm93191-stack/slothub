@@ -10,8 +10,20 @@ internal sealed class PaymentRepository(PaymentDbContext db) : IPaymentRepositor
     public Task<PaymentEntity?> FindAsync(Guid id, CancellationToken ct) =>
         db.Payments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, ct);
 
-    public async Task<IReadOnlyList<PaymentEntity>> ListByBookingAsync(Guid bookingId, CancellationToken ct) =>
-        await db.Payments.AsNoTracking().Where(x => x.BookingId == bookingId).OrderBy(x => x.CreatedAt).ToListAsync(ct);
+    public async Task<IReadOnlyList<PaymentEntity>> ListByBookingAsync(Guid bookingId, int page, int pageSize, CancellationToken ct)
+    {
+        var offset = ((long)page - 1) * pageSize;
+        if (offset > int.MaxValue)
+        {
+            return [];
+        }
+
+        return await db.Payments.AsNoTracking()
+            .Where(x => x.BookingId == bookingId)
+            .OrderBy(x => x.CreatedAt).ThenBy(x => x.Id)
+            .Skip((int)offset).Take(pageSize)
+            .ToListAsync(ct);
+    }
 
     public async Task AddAsync(PaymentEntity payment, CancellationToken ct)
     {

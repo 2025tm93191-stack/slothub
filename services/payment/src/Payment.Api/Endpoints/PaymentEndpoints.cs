@@ -85,10 +85,17 @@ public static class PaymentEndpoints
             .WithSummary("Get a payment with its refunds")
             .ProducesProblem(StatusCodes.Status404NotFound);
 
-        payments.MapGet("/", async ([FromQuery] Guid bookingId, PaymentService service, CancellationToken ct) =>
-                TypedResults.Ok((await service.ListByBookingAsync(bookingId, ct)).Select(PaymentResponse.From)))
+        payments.MapGet("/", async (
+                [FromQuery] Guid bookingId,
+                PaymentService service,
+                CancellationToken ct,
+                [FromQuery] int page = 1,
+                [FromQuery] int pageSize = 20) =>
+                TypedResults.Ok((await service.ListByBookingAsync(bookingId, page, pageSize, ct))
+                    .Select(PaymentResponse.From).ToList()))
             .WithName("ListPaymentsByBooking")
-            .WithSummary("List all payments for a booking");
+            .WithSummary("List payments for a booking in creation order; page starts at 1, pageSize is 1-100 (default 20).")
+            .ProducesProblem(StatusCodes.Status400BadRequest);
 
         payments.MapPost("/{paymentId:guid}/refunds", async (Guid paymentId, RefundRequest request, PaymentService service, CancellationToken ct) =>
             {

@@ -20,7 +20,7 @@ public interface IPaymentRepository
 {
     Task<Payment?> FindAsync(Guid id, CancellationToken ct);
 
-    Task<IReadOnlyList<Payment>> ListByBookingAsync(Guid bookingId, CancellationToken ct);
+    Task<IReadOnlyList<Payment>> ListByBookingAsync(Guid bookingId, int page, int pageSize, CancellationToken ct);
 
     Task AddAsync(Payment payment, CancellationToken ct);
 
@@ -61,8 +61,16 @@ public sealed class PaymentService(IPaymentRepository repository, IPaymentGatewa
         await repository.FindAsync(paymentId, ct)
         ?? throw DomainException.NotFound(ErrorCodes.PaymentNotFound, $"Payment {paymentId} was not found.");
 
-    public Task<IReadOnlyList<Payment>> ListByBookingAsync(Guid bookingId, CancellationToken ct) =>
-        repository.ListByBookingAsync(bookingId, ct);
+    public Task<IReadOnlyList<Payment>> ListByBookingAsync(Guid bookingId, int page, int pageSize, CancellationToken ct)
+    {
+        if (page < 1 || pageSize is < 1 or > 100)
+        {
+            throw DomainException.Validation(
+                ErrorCodes.ValidationFailed, "Page must be at least 1 and pageSize must be between 1 and 100.");
+        }
+
+        return repository.ListByBookingAsync(bookingId, page, pageSize, ct);
+    }
 
     public Task<(Payment Payment, Refund Refund)> RefundAsync(Guid paymentId, long amountMinor, CancellationToken ct) =>
         repository.ModifyAsync(paymentId, payment => (payment, payment.Refund(amountMinor, clock.GetUtcNow())), ct);

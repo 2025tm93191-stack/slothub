@@ -285,7 +285,7 @@ PBI-046, PBI-052, PBI-058, PBI-060, PBI-061, PBI-063, PBI-064, PBI-066 → PBI-0
 |---|---|---|---|---|---|---|---|
 | PBI-057 | Business rule unit tests | At least one unit test per BR1–BR6, named `BRn_…`<br>Traceability table (below) filled with real file paths | 3 | Must | S2 | 021, 027, 032, 050, 054 | ✅ Done |
 | PBI-058 | Integration tests | Testcontainers tests for hold expiry worker and idempotency filter (incl. parallel identical requests) | 5 | Should | S3 | 050, 054 | ✅ Done |
-| PBI-059 | End-to-end script | `scripts/e2e-booking` seeds data, creates booking, pays, verifies CONFIRMED and notification sent<br>Also runs one failure (payment declined → FAILED, capacity restored)<br>Exits non-zero on any failed check | 5 | Must | S2 | 032, 033, 038 | ✅ Done |
+| PBI-059 | End-to-end script | `scripts/e2e-booking.sh` seeds data, creates booking, pays, verifies CONFIRMED and notification sent<br>Also runs one failure (payment declined → FAILED, capacity restored)<br>Exits non-zero on any failed check | 5 | Must | S2 | 032, 033, 038 | ✅ Done |
 | PBI-060 | Postman collection | Collection + environment covering every endpoint, with example requests and failure cases | 2 | Should | S3 | 035 | ✅ Done |
 | PBI-061 | Fresh-clone verification | Another member clones on a clean machine and runs everything from README only; gaps fixed | 2 | Must | S3 | 063 | ✅ Done (clean-copy check passed; repeat on a teammate's machine) |
 
@@ -295,7 +295,7 @@ PBI-046, PBI-052, PBI-058, PBI-060, PBI-061, PBI-063, PBI-064, PBI-066 → PBI-0
 
 | ID | PBI | Acceptance criteria | SP | Pri | Sprint | Depends | Status |
 |---|---|---|---|---|---|---|---|
-| PBI-062 | Seed script | `scripts/seed` creates a tenant, resource, offering and slots (configurable capacity); prints IDs | 2 | Must | S1 | 018 | ✅ Done |
+| PBI-062 | Seed script | `scripts/seed.sh` creates a tenant, resource, offering and slots (configurable capacity); prints IDs | 2 | Must | S1 | 018 | ✅ Done |
 | PBI-063 | Complete README | What it is, prerequisites, how to start DB and each service, ports, env vars, how to run tests and each script | 3 | Must | S3 | all E1–E6 | ✅ Done |
 | PBI-064 | Export OpenAPI specs | `docs/openapi/{service}.json` exported from each running service | 1 | Must | S3 | 012 | ✅ Done |
 | PBI-065 | Run-all script | One command starts PostgreSQL and all 4 services (and stops them) | 2 | Should | S2 | 004 | ✅ Done (`docker compose up -d --build --wait` / `down`) |

@@ -65,6 +65,51 @@ public class PaymentTests
     }
 
     [Fact]
+    public void PartialRefund_OddAmount_PreservesEveryMinorUnit()
+    {
+        // Payment processes exact minor units; percentage calculations belong to Booking's refund policy.
+        var payment = Succeeded(101);
+
+        var first = payment.Refund(50, Now);
+        Assert.Equal(50, first.AmountMinor);
+        Assert.Equal(50, payment.RefundedMinor);
+        Assert.Equal(51, payment.RefundableMinor);
+        Assert.Equal(PaymentStatus.PartiallyRefunded, payment.Status);
+
+        var second = payment.Refund(51, Now);
+        Assert.Equal(51, second.AmountMinor);
+        Assert.Equal(101, payment.RefundedMinor);
+        Assert.Equal(0, payment.RefundableMinor);
+        Assert.Equal(PaymentStatus.Refunded, payment.Status);
+    }
+
+    [Fact]
+    public void PartialRefund_OneMinorUnit_DoesNotLosePrecision()
+    {
+        var payment = Succeeded(3);
+        payment.Refund(1, Now);
+
+        Assert.Equal(1, payment.RefundedMinor);
+        Assert.Equal(2, payment.RefundableMinor);
+        Assert.Single(payment.Refunds);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void Refund_RejectsNonPositiveAmounts_WithoutChangingState(long amountMinor)
+    {
+        var payment = Succeeded(101);
+
+        var error = Assert.Throws<DomainException>(() => payment.Refund(amountMinor, Now));
+
+        Assert.Equal(ErrorCodes.ValidationFailed, error.Code);
+        Assert.Equal(0, payment.RefundedMinor);
+        Assert.Empty(payment.Refunds);
+        Assert.Equal(PaymentStatus.Succeeded, payment.Status);
+    }
+
+    [Fact]
     public void Refund_CannotExceedRemainingAmount()
     {
         var payment = Succeeded(50_000);

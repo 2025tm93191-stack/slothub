@@ -18,6 +18,7 @@ started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 # fire_parallel <n> <method> <url> <body> <key>: releases n identical requests at the same instant (FIFO barrier)
 fire_parallel() {
   local n="$1" method="$2" url="$3" body="$4" key="$5"
+  local -a worker_pids=()
   rm -f "$WORK"/p.*; mkfifo "$WORK/go"
   for i in $(seq 1 "$n"); do
     (
@@ -26,10 +27,11 @@ fire_parallel() {
       [[ -n "$body" ]] && args+=(-H 'Content-Type: application/json' -d "$body")
       curl "${args[@]}" "$url" >"$WORK/p.$i.status"
     ) &
+    worker_pids+=("$!")
   done
   sleep 1
   exec 3>"$WORK/go"; exec 3>&-
-  wait
+  wait "${worker_pids[@]}"
   rm -f "$WORK/go"
   printf '  %-4s %-6s %-9s %s\n' "#" "HTTP" "replayed" "result"
   for i in $(seq 1 "$n"); do

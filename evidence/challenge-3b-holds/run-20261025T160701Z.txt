@@ -1,0 +1,108 @@
+Run:      c3b-20261025T160701Z
+Started:  2026-10-25T16:07:01Z
+Command:  scripts/challenge3b-holds.sh --ttl 30
+
+
+== Setup at 16:07:02: four bookings, each on its own slot (capacity 1), hold TTL 30s ==
+POST 5102/api/v1/bookings -> 201 {"status":"HELD","id":"01a173d0-c178-7d20-851c-8787834be661"}
+  A (left unpaid):  booking 01a173d0-c178-7d20-851c-8787834be661, hold expires 2026-10-25T16:07:33.625066+00:00
+POST 5102/api/v1/bookings -> 201 {"status":"HELD","id":"01a173d0-c438-7ba1-a36b-4f316ea39f3a"}
+POST 5102/api/v1/bookings/01a173d0-c438-7ba1-a36b-4f316ea39f3a/payment -> 200 {"status":"CONFIRMED","id":"01a173d0-c438-7ba1-a36b-4f316ea39f3a"}
+  C (paid at once): booking 01a173d0-c438-7ba1-a36b-4f316ea39f3a → CONFIRMED
+POST 5102/api/v1/bookings -> 201 {"status":"HELD","id":"01a173d0-c82e-7c9b-81b7-11d0faaf9449"}
+POST 5102/api/v1/bookings -> 201 {"status":"HELD","id":"01a173d0-c8ad-716e-9e57-8147db09f141"}
+  E (pays late):    booking 01a173d0-c8ad-716e-9e57-8147db09f141
+
+== D. Cancellation releases the hold immediately ==
+  PASS  slot D reserved before cancel (= 1)
+POST 5102/api/v1/bookings/01a173d0-c82e-7c9b-81b7-11d0faaf9449/cancel -> 200 {"status":"CANCELLED","id":"01a173d0-c82e-7c9b-81b7-11d0faaf9449"}
+  PASS  booking D (= CANCELLED)
+  PASS  hold D (= RELEASED)
+  PASS  slot D reserved right after cancel (= 0)
+
+== E. Late payment: start paying 26s after the hold, gateway takes 6s → completes after expiry ==
+  (chaos on payment: failureRate=0 latencyMs=6000 mode=DECLINE)
+POST 5102/api/v1/bookings/01a173d0-c8ad-716e-9e57-8147db09f141/payment -> 200 {"status":"CONFIRMED","id":"01a173d0-c8ad-716e-9e57-8147db09f141"}
+  (chaos on payment: failureRate=0 latencyMs=0 mode=DECLINE)
+  FAIL  late pay → 409: expected 409, got 200
+  FAIL  error code: expected HOLD_EXPIRED, got null
+GET 5102/api/v1/bookings/01a173d0-c8ad-716e-9e57-8147db09f141 -> 200 {"status":"CONFIRMED","id":"01a173d0-c8ad-716e-9e57-8147db09f141"}
+  FAIL  booking E: expected EXPIRED, got CONFIRMED
+  FAIL  booking E refunded amount: expected 50000, got 0
+GET 5103/api/v1/payments?bookingId=01a173d0-c8ad-716e-9e57-8147db09f141 -> 200 
+  FAIL  payment E (charged once, then refunded): expected 1 REFUNDED, got 1 SUCCEEDED
+
+== A. Unpaid hold expires automatically ==
+  waiting for the expiry worker (TTL 30s + sweep interval)...
+  ... hold A EXPIRED after 2s
+  PASS  hold A (= EXPIRED)
+  PASS  slot A capacity returned (= 0)
+  ... booking A reconciled after 0s
+  PASS  booking A (= EXPIRED)
+  ... expiry notification after 2s
+GET 5104/api/v1/notifications?bookingId=01a173d0-c178-7d20-851c-8787834be661 -> 200 {}
+  PASS  BOOKING_EXPIRED notification queued (= true)
+
+== B. Expiry job run twice ==
+POST 5101/api/v1/admin/holds/expire-now -> 200 {}
+POST 5101/api/v1/admin/holds/expire-now -> 200 {}
+  run 1 expired 0 hold(s) (the background worker had already done the work), run 2 expired 0
+  PASS  second run expires nothing (= 0)
+  PASS  slot A still 0 reserved (no double release) (= 0)
+
+== C. Paid hold is never released by expiry ==
+  PASS  hold C (= CONFIRMED)
+  PASS  slot C still reserved (= 1)
+  PASS  booking C (= CONFIRMED)
+
+== Database state (scheduling_db) ==
+              booking_id              |  status   |          expires_at           | capacity | reserved_count 
+--------------------------------------+-----------+-------------------------------+----------+----------------
+ 01a173d0-c178-7d20-851c-8787834be661 | EXPIRED   | 2026-10-25 16:07:33.625066+00 |        1 |              0
+ 01a173d0-c438-7ba1-a36b-4f316ea39f3a | CONFIRMED | 2026-10-25 16:07:34.002944+00 |        1 |              1
+ 01a173d0-c82e-7c9b-81b7-11d0faaf9449 | RELEASED  | 2026-10-25 16:07:35.020982+00 |        1 |              0
+ 01a173d0-c8ad-716e-9e57-8147db09f141 | CONFIRMED | 2026-10-25 16:07:35.138841+00 |        1 |              1
+(4 rows)
+
+
+== Database state (booking_db) ==
+                  id                  |  status   | refunded_minor | failure_reason 
+--------------------------------------+-----------+----------------+----------------
+ 01a173d0-c178-7d20-851c-8787834be661 | EXPIRED   |              0 | HOLD_EXPIRED
+ 01a173d0-c438-7ba1-a36b-4f316ea39f3a | CONFIRMED |              0 | 
+ 01a173d0-c82e-7c9b-81b7-11d0faaf9449 | CANCELLED |              0 | 
+ 01a173d0-c8ad-716e-9e57-8147db09f141 | CONFIRMED |              0 | 
+(4 rows)
+
+
+== Expiry log lines ==
+-- slothub-scheduling
+16:07:37.208 - Hold 01a173d0-c2ca-75ca-99f3-c1a4b116e6b0 for booking 01a173d0-c178-7d20-851c-8787834be661 expired; capacity returned to slot 01a173d0-c014-7b4d-8faa-bfcd986d8ffa
+16:07:37.209 - Hold expiry sweep expired 1 hold(s)
+-- slothub-booking
+16:07:03.794 c3b-20261025T160701Z-1 Booking 01a173d0-c178-7d20-851c-8787834be661 HELD with hold 01a173d0-c2ca-75ca-99f3-c1a4b116e6b0 until 10/25/2026 16:07:33 +00:00
+16:07:05.145 c3b-20261025T160701Z-5 Booking 01a173d0-c8ad-716e-9e57-8147db09f141 HELD with hold 01a173d0-c8b3-797a-881d-11cf709e7bfd until 10/25/2026 16:07:35 +00:00
+16:07:30.790 c3b-20261025T160701Z-7 Payment still processing an earlier attempt (poll 1); waiting
+16:07:31.814 c3b-20261025T160701Z-7 Payment still processing an earlier attempt (poll 2); waiting
+16:07:32.828 c3b-20261025T160701Z-7 Payment still processing an earlier attempt (poll 3); waiting
+16:07:33.841 c3b-20261025T160701Z-7 Payment still processing an earlier attempt (poll 4); waiting
+16:07:34.883 c3b-20261025T160701Z-7 Booking 01a173d0-c8ad-716e-9e57-8147db09f141 CONFIRMED with payment 01a173d1-23bf-75bf-be99-fa693cc1e521
+16:07:34.887 c3b-20261025T160701Z-7 Idempotency key "c8513676-bdba-4190-8b56-13bb10837fe0" stored with 200 for "POST /api/v1/bookings/01a173d0-c8ad-716e-9e57-8147db09f141/payment"
+16:07:34.888 c3b-20261025T160701Z-7 HTTP "POST" "/api/v1/bookings/01a173d0-c8ad-716e-9e57-8147db09f141/payment" responded 200 in 6565.1 ms
+16:07:34.996 c3b-20261025T160701Z-8 HTTP "GET" "/api/v1/bookings/01a173d0-c8ad-716e-9e57-8147db09f141" responded 200 in 46.9 ms
+16:07:37.222 - Booking 01a173d0-c178-7d20-851c-8787834be661 reconciled to Expired (hold "EXPIRED")
+16:07:37.312 dfee15848988423d9126d36fd403f4e2 HTTP "GET" "/api/v1/bookings/01a173d0-c178-7d20-851c-8787834be661" responded 200 in 5.4 ms
+16:07:37.334 82ae699a2f1f415c9b828ba2a5ec1954 HTTP "GET" "/api/v1/bookings/01a173d0-c178-7d20-851c-8787834be661" responded 200 in 3.1 ms
+-- slothub-payment
+16:07:30.744 c3b-20261025T160701Z-7 Idempotency key "pay-01a173d0-c8ad-716e-9e57-8147db09f141" on "POST /api/v1/payments" is still being processed
+16:07:31.812 c3b-20261025T160701Z-7 Idempotency key "pay-01a173d0-c8ad-716e-9e57-8147db09f141" on "POST /api/v1/payments" is still being processed
+16:07:32.826 c3b-20261025T160701Z-7 Idempotency key "pay-01a173d0-c8ad-716e-9e57-8147db09f141" on "POST /api/v1/payments" is still being processed
+16:07:33.839 c3b-20261025T160701Z-7 Idempotency key "pay-01a173d0-c8ad-716e-9e57-8147db09f141" on "POST /api/v1/payments" is still being processed
+16:07:34.450 c3b-20261025T160701Z-7 Gateway approved 50000 "INR" for booking 01a173d0-c8ad-716e-9e57-8147db09f141
+16:07:34.473 c3b-20261025T160701Z-7 Idempotency key "pay-01a173d0-c8ad-716e-9e57-8147db09f141" stored with 201 for "POST /api/v1/payments"
+16:07:34.852 c3b-20261025T160701Z-7 Idempotency replay for key "pay-01a173d0-c8ad-716e-9e57-8147db09f141" on "POST /api/v1/payments": returning stored 201
+
+Checks passed: 13, failed: 5
+Finished: 2026-10-25T16:07:40Z
+Saved to: evidence/challenge-3b-holds/run-20261025T160701Z.txt
+RESULT: FAIL

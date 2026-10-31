@@ -1,0 +1,78 @@
+# notification service: Deployment (probes on the /health endpoints, config from ConfigMap + Secret) and two Services —
+# "notification" (ClusterIP, used by other services inside the cluster) and "notification-external" (LoadBalancer on port 5104,
+# reachable from the host at localhost:5104 while "minikube tunnel" runs; same port as Docker Compose).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification
+  namespace: slothub
+  labels: { app.kubernetes.io/name: notification, app.kubernetes.io/part-of: slothub, app.kubernetes.io/version: "1.0.0" }
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels: { app.kubernetes.io/name: notification }
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: notification, app.kubernetes.io/part-of: slothub, app.kubernetes.io/version: "1.0.0" }
+    spec:
+      containers:
+        - name: notification
+          image: slothub-notification:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef: { name: notification-config }
+          env:
+            - name: DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: slothub-db, key: NOTIFICATION_DB_PASSWORD } }
+            - name: ConnectionStrings__Default
+              value: Host=postgres;Port=5432;Database=notification_db;Username=notification_user;Password=$(DB_PASSWORD);GSS Encryption Mode=Disable
+          startupProbe:                     # give the app time to start before liveness applies
+            httpGet: { path: /health, port: http }
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:                    # process alive? otherwise restart the container
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:                   # service + own database OK? otherwise remove from Service endpoints
+            httpGet: { path: /health/ready, port: http }
+            periodSeconds: 5
+            failureThreshold: 2
+          resources:
+            requests: { cpu: 100m, memory: 160Mi }
+            limits: { memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification
+  namespace: slothub
+  labels: { app.kubernetes.io/name: notification, app.kubernetes.io/part-of: slothub }
+spec:
+  type: ClusterIP
+  selector: { app.kubernetes.io/name: notification }
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-external
+  namespace: slothub
+  labels: { app.kubernetes.io/name: notification, app.kubernetes.io/part-of: slothub }
+spec:
+  type: LoadBalancer
+  selector: { app.kubernetes.io/name: notification }
+  ports:
+    - name: http
+      port: 5104
+      targetPort: http

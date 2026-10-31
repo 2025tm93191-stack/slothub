@@ -20,7 +20,11 @@ app.UseServiceDefaults(serviceName);
 
 app.MapGroup("/api/v1").MapBookingEndpoints();
 
-await app.MigrateDatabaseIfEnabledAsync<BookingDbContext>();
+if (await app.MigrateDatabaseIfEnabledAsync<BookingDbContext>())
+{
+    return; // MIGRATE_ONLY: migrations applied, exit (Kubernetes migration Job)
+}
+
 await app.RunAsync();
 
 public partial class Program;

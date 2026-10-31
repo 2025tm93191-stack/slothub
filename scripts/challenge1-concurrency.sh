@@ -23,6 +23,8 @@ done
 root="$(cd "$(dirname "$0")/.." && pwd)"
 url="${SCHEDULING_URL:-http://localhost:5101}"
 pg_container="${PG_CONTAINER:-slothub-postgres}"
+# Kubernetes: PG_EXEC="kubectl -n slothub exec -i postgres-0 --"
+read -r -a pg_exec <<<"${PG_EXEC:-docker exec $pg_container}"
 run_id="c1-$(date -u +%Y%m%dT%H%M%SZ)"
 out_dir="$root/evidence/challenge-1-concurrency"
 suffix=""
@@ -31,7 +33,11 @@ out_file="$out_dir/run-${run_id#c1-}-capacity${capacity}${suffix}.txt"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 mkdir -p "$out_dir"
-exec > >(tee "$out_file") 2>&1
+if [[ -n "${EVIDENCE_NESTED:-}" ]]; then
+  out_file="(included in the calling script's evidence file)"
+else
+  exec > >(tee "$out_file") 2>&1
+fi
 
 echo "== Challenge 1: concurrency control (BR1) =="
 echo "Run:        $run_id"
@@ -90,14 +96,14 @@ echo "Slot via API:                  $(jq -c '{capacity, reserved, remaining}' <
 
 echo
 echo "== Database state (scheduling_db) =="
-docker exec "$pg_container" psql -U scheduling_user -d scheduling_db -c \
+"${pg_exec[@]}" psql -U scheduling_user -d scheduling_db -c \
   "SELECT id, capacity, reserved_count, version FROM slots WHERE id = '$slot_id';" -c \
   "SELECT status, count(*) FROM holds WHERE slot_id = '$slot_id' GROUP BY status;" \
   || echo "(could not query database container '$pg_container')"
 
 echo
 if [[ "$naive" == true ]]; then
-  holds=$(docker exec "$pg_container" psql -U scheduling_user -d scheduling_db -At -c "SELECT count(*) FROM holds WHERE slot_id = '$slot_id';")
+  holds=$("${pg_exec[@]}" psql -U scheduling_user -d scheduling_db -At -c "SELECT count(*) FROM holds WHERE slot_id = '$slot_id';")
   echo "Holds created: $holds for capacity $capacity; reserved_count says $reserved."
   if [[ "$holds" -gt "$capacity" ]]; then
     echo "RESULT: OVER-ALLOCATED (expected in naive mode) — concurrent requests all read the old count, all passed"

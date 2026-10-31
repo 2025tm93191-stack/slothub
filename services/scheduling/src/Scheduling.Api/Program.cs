@@ -23,7 +23,11 @@ api.MapCatalogEndpoints();
 api.MapSlotEndpoints();
 api.MapHoldEndpoints();
 
-await app.MigrateDatabaseIfEnabledAsync<SchedulingDbContext>();
+if (await app.MigrateDatabaseIfEnabledAsync<SchedulingDbContext>())
+{
+    return; // MIGRATE_ONLY: migrations applied, exit (Kubernetes migration Job)
+}
+
 await app.RunAsync();
 
 public partial class Program;

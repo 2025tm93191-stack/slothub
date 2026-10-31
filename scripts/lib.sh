@@ -8,6 +8,8 @@ BOOKING_URL="${BOOKING_URL:-http://localhost:5102}"
 PAYMENT_URL="${PAYMENT_URL:-http://localhost:5103}"
 NOTIFICATION_URL="${NOTIFICATION_URL:-http://localhost:5104}"
 PG_CONTAINER="${PG_CONTAINER:-slothub-postgres}"
+# How to run psql inside the database container. Kubernetes: PG_EXEC="kubectl -n slothub exec -i postgres-0 --"
+read -r -a PG_EXEC_CMD <<<"${PG_EXEC:-docker exec $PG_CONTAINER}"
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -21,7 +23,12 @@ start_evidence() {
   local dir="$ROOT/evidence/$1"
   mkdir -p "$dir"
   EVIDENCE_FILE="$dir/run-${RUN_ID#"$2"-}.txt"
-  exec > >(tee "$EVIDENCE_FILE") 2>&1
+  if [[ -n "${EVIDENCE_NESTED:-}" ]]; then
+    EVIDENCE_FILE="(included in the calling script's evidence file)"   # called from another evidence script
+  else
+    exec > >(tee "$EVIDENCE_FILE") 2>&1
+    export EVIDENCE_NESTED=1   # scripts we call print into this file instead of writing their own
+  fi
   echo "Run:      $RUN_ID"
   echo "Started:  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "Command:  ${SCRIPT_COMMAND:-$0}"
@@ -62,11 +69,11 @@ check() {
 
 # sql <service> <query>: runs in that service's own database as that service's own user
 sql() {
-  docker exec "$PG_CONTAINER" psql -U "$1_user" -d "$1_db" -At -F ' | ' -c "$2"
+  "${PG_EXEC_CMD[@]}" psql -U "$1_user" -d "$1_db" -At -F ' | ' -c "$2"
 }
 
 sql_table() {
-  docker exec "$PG_CONTAINER" psql -U "$1_user" -d "$1_db" -c "$2"
+  "${PG_EXEC_CMD[@]}" psql -U "$1_user" -d "$1_db" -c "$2"
 }
 
 # wait_for <description> <timeout-seconds> <command...>: polls until the command prints "true"

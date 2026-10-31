@@ -1,0 +1,103 @@
+Run:      scale-heal-20261031T141315Z
+Started:  2026-10-31T14:13:15Z
+Command:  scripts/a2-k8s-scale-heal.sh
+
+
+== A. Scale Scheduling and Booking to 3 replicas ==
+$ kubectl scale deployment scheduling booking --replicas=3
+deployment.apps/scheduling scaled
+deployment.apps/booking scaled
+Waiting for deployment "scheduling" rollout to finish: 1 of 3 updated replicas are available...
+Waiting for deployment "scheduling" rollout to finish: 2 of 3 updated replicas are available...
+deployment "scheduling" successfully rolled out
+deployment "booking" successfully rolled out
+  scheduling-594f785b6d-8l4p9        1/1      Running    10.244.0.12
+  scheduling-594f785b6d-r7ds7        1/1      Running    10.244.0.26
+  scheduling-594f785b6d-vtg8n        1/1      Running    10.244.0.23
+  booking-7d9479b667-72bf5           1/1      Running    10.244.0.24
+  booking-7d9479b667-8tw6g           1/1      Running    10.244.0.25
+  booking-7d9479b667-t62n8           1/1      Running    10.244.0.13
+  PASS  scheduling ready replicas (= 3)
+  PASS  booking ready replicas (= 3)
+
+Challenge 1 through the Service (LoadBalancer → kube-proxy → any of the 3 Scheduling pods):
+  │ 201 Created (held):            1   (expected 1)
+  │ 409 Conflict:                  29   (expected 29, all SLOT_UNAVAILABLE: 29)
+  │ RESULT: PASS — exactly 1 of 30 concurrent requests succeeded; no over-allocation.
+  │ 201 Created (held):            1   (expected 1)
+  │ 409 Conflict:                  29   (expected 29, all SLOT_UNAVAILABLE: 29)
+  PASS  challenge 1 with 3 replicas: exactly 1 of 30 (= true)
+  Requests of run c1-20261031T141319Z served per Scheduling pod (kubectl logs):
+    scheduling-594f785b6d-8l4p9              32 log lines
+    scheduling-594f785b6d-r7ds7              27 log lines
+    scheduling-594f785b6d-vtg8n              30 log lines
+  PASS  requests reached more than one Scheduling pod (= true)
+
+== B. Hold expiry with 3 Scheduling replicas (3 sweepers at once) ==
+  created 5 unpaid holds; waiting for TTL (30 s) + sweep...
+  hold 01a1924e-d2b7-725e-87a9-aa285fd37c89: EXPIRED, expired by 1 sweeper(s)
+  PASS  hold 01a1924e-d2b7-725e-87a9-aa285fd37c89 released exactly once (= EXPIRED 1)
+  hold 01a1924e-d4a6-7d05-96a4-9f38d5907d75: EXPIRED, expired by 1 sweeper(s)
+  PASS  hold 01a1924e-d4a6-7d05-96a4-9f38d5907d75 released exactly once (= EXPIRED 1)
+  hold 01a1924e-d751-719d-aa7c-3785f8667f00: EXPIRED, expired by 1 sweeper(s)
+  PASS  hold 01a1924e-d751-719d-aa7c-3785f8667f00 released exactly once (= EXPIRED 1)
+  hold 01a1924e-d90d-780c-ae8d-0951bf997d49: EXPIRED, expired by 1 sweeper(s)
+  PASS  hold 01a1924e-d90d-780c-ae8d-0951bf997d49 released exactly once (= EXPIRED 1)
+  hold 01a1924e-da93-7137-89ab-06d5ebe79fdf: EXPIRED, expired by 1 sweeper(s)
+  PASS  hold 01a1924e-da93-7137-89ab-06d5ebe79fdf released exactly once (= EXPIRED 1)
+  Expiry log lines per pod:
+    scheduling-594f785b6d-8l4p9              6 holds expired
+    scheduling-594f785b6d-r7ds7              0 holds expired
+    scheduling-594f785b6d-vtg8n              0 holds expired
+
+== C. Self-healing ==
+$ kubectl delete pod <one booking pod>   (while bookings keep flowing)
+  deleting pod/booking-7d9479b667-72bf5
+  booking-7d9479b667-8tw6g           1/1      Running    10.244.0.25
+  booking-7d9479b667-jpq7f           1/1      Running    10.244.0.27
+  booking-7d9479b667-t62n8           1/1      Running    10.244.0.13
+  replacement pod(s): pod/booking-7d9479b667-jpq7f 
+  PASS  booking flows confirmed during the pod deletion (= 6)
+  PASS  booking back to 3 ready replicas (= 3)
+  PASS  a new booking pod replaced the deleted one (= true)
+
+$ kubectl delete pod <the only payment pod>
+  payment pod payment-795bd845d8-4sjmg → payment-795bd845d8-ftvrp
+  payment-795bd845d8-ftvrp           1/1      Running    10.244.0.28
+  PASS  payment pod recreated (= true)
+  PASS  booking flow after payment pod replaced (= CONFIRMED)
+
+== D. Readiness probes protect traffic ==
+$ kubectl scale statefulset postgres --replicas=0
+  notification-bd4b5b657-vtfdl       0/1
+  payment-795bd845d8-ftvrp           0/1
+  scheduling-594f785b6d-8l4p9        0/1
+  scheduling-594f785b6d-r7ds7        0/1
+  scheduling-594f785b6d-vtg8n        0/1
+  PASS  scheduling pods NotReady without their database (= 0)
+  Service endpoints of scheduling (ready addresses): false false false 
+$ kubectl scale statefulset postgres --replicas=1
+  PASS  scheduling ready again (= 3)
+  PASS  booking flow after the database returned (data on the PVC) (= CONFIRMED)
+
+== E. Scale back to 1 replica ==
+deployment.apps/scheduling scaled
+deployment.apps/booking scaled
+  booking-7d9479b667-8tw6g           1/1      Terminating
+  booking-7d9479b667-jpq7f           1/1      Terminating
+  booking-7d9479b667-t62n8           1/1      Running
+  migrate-booking-k9vjg              0/1      Completed
+  migrate-notification-ggc8p         0/1      Completed
+  migrate-payment-rgnhz              0/1      Completed
+  migrate-scheduling-ccwnd           0/1      Completed
+  notification-bd4b5b657-vtfdl       1/1      Running
+  payment-795bd845d8-ftvrp           1/1      Running
+  postgres-0                         1/1      Running
+  scheduling-594f785b6d-8l4p9        1/1      Running
+  scheduling-594f785b6d-r7ds7        1/1      Terminating
+  scheduling-594f785b6d-vtg8n        1/1      Terminating
+
+Checks passed: 17, failed: 0
+Finished: 2026-10-31T14:14:34Z
+Saved to: evidence/a2-advanced-k8s/run-20261031T141315Z.txt
+RESULT: PASS

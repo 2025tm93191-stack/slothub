@@ -1,0 +1,9 @@
+# SlotHub on Kubernetes (Minikube). Apply with scripts/k8s-deploy.sh, which also creates, outside these files:
+#   Secret    slothub-db     — database passwords, from .env (never committed)
+#   ConfigMap postgres-init  — infra/postgres/init/01-create-databases.sh (one database + login per service)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: slothub
+  labels:
+    app.kubernetes.io/part-of: slothub

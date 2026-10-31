@@ -34,15 +34,26 @@ public static class PersistenceExtensions
     public static DbContextOptionsBuilder UseServiceDefaults(this DbContextOptionsBuilder options, string connectionString) =>
         options.UseNpgsql(connectionString).UseSnakeCaseNamingConvention();
 
-    /// <summary>Applies pending EF Core migrations when <c>DB_MIGRATE_ON_STARTUP=true</c>, retrying while the DB starts.</summary>
-    public static async Task MigrateDatabaseIfEnabledAsync<TContext>(this WebApplication app, int maxAttempts = 10)
+    /// <summary>
+    /// Applies pending EF Core migrations when <c>DB_MIGRATE_ON_STARTUP=true</c> or <c>MIGRATE_ONLY=true</c>, retrying
+    /// while the database starts. Returns <c>true</c> when <c>MIGRATE_ONLY=true</c>: the process should exit instead of
+    /// serving traffic. Kubernetes uses that mode in a one-off Job, so several replicas never migrate concurrently.
+    /// </summary>
+    public static async Task<bool> MigrateDatabaseIfEnabledAsync<TContext>(this WebApplication app, int maxAttempts = 10)
         where TContext : DbContext
     {
-        if (!app.Configuration.GetValue("DB_MIGRATE_ON_STARTUP", false))
+        var migrateOnly = app.Configuration.GetValue("MIGRATE_ONLY", false);
+        if (migrateOnly || app.Configuration.GetValue("DB_MIGRATE_ON_STARTUP", false))
         {
-            return;
+            await MigrateAsync<TContext>(app, maxAttempts);
         }
 
+        return migrateOnly;
+    }
+
+    private static async Task MigrateAsync<TContext>(WebApplication app, int maxAttempts)
+        where TContext : DbContext
+    {
         for (var attempt = 1; ; attempt++)
         {
             try

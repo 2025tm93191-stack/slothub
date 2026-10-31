@@ -22,7 +22,11 @@ app.UseServiceDefaults(serviceName);
 app.MapGroup("/api/v1").MapPaymentEndpoints();
 app.MapChaosEndpoints();
 
-await app.MigrateDatabaseIfEnabledAsync<PaymentDbContext>();
+if (await app.MigrateDatabaseIfEnabledAsync<PaymentDbContext>())
+{
+    return; // MIGRATE_ONLY: migrations applied, exit (Kubernetes migration Job)
+}
+
 await app.RunAsync();
 
 public partial class Program;

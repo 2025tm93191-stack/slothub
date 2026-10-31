@@ -1,0 +1,91 @@
+Run:      troubleshoot-20261031T133903Z
+Started:  2026-10-31T13:39:03Z
+Command:  scripts/a2-troubleshoot-demo.sh
+
+
+== 0. Starting point: deployment stopped, another program takes host port 5440 ==
+ Container slothub-booking Removed 
+ Container slothub-notification Removed 
+ Container slothub-payment Removed 
+ Container slothub-postgres Removed 
+ Container slothub-scheduling Removed 
+ Network slothub_default Removed 
+A local process (pid 91093) now listens on port 5440 — like the developer's own PostgreSQL did.
+
+== 1. Problem: docker compose up fails ==
+   Container slothub-payment Creating 
+   Container slothub-notification Created 
+   Container slothub-scheduling Created 
+   Container slothub-payment Created 
+   Container slothub-booking Creating 
+   Container slothub-booking Created 
+   Container slothub-postgres Starting 
+  Error response from daemon: ports are not available: exposing port TCP 0.0.0.0:5440 -> 127.0.0.1:0: listen tcp 0.0.0.0:5440: bind: address already in use
+  PASS  docker compose up exits with an error (= true)
+  PASS  error is about the port (= true)
+
+== 2. Diagnosis ==
+$ docker compose ps -a        # which containers exist and in what state?
+  NAME                   STATE     STATUS
+  slothub-booking        created   Created
+  slothub-notification   created   Created
+  slothub-payment        created   Created
+  slothub-postgres       created   Created
+  slothub-scheduling     created   Created
+
+$ docker inspect slothub-postgres --format '{{.State.Status}} | exit={{.State.ExitCode}} | {{.State.Error}}'
+  created | exit=0 | 
+  PASS  postgres container never reached running (= true)
+
+$ docker inspect slothub-postgres --format '{{json .HostConfig.PortBindings}}'   # what does it try to bind?
+  {"5432/tcp":[{"HostIp":"","HostPort":"5440"}]}
+
+$ docker compose logs postgres   # empty: the process never started, so the cause is not inside the container
+  (0 log lines)
+
+$ lsof -nP -iTCP:5440 -sTCP:LISTEN   # who holds the host port?
+  COMMAND   PID           USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+  Python  91093 subhodipanwesa    3u  IPv6 0xa0233af3e7d3eb41      0t0  TCP *:5440 (LISTEN)
+  PASS  a non-Docker process holds port 5440 (= true)
+
+Cause: the host port in the 'ports:' mapping (${POSTGRES_PORT}:5432) is taken by a program outside Docker.
+The services themselves reach the database on the internal network as postgres:5432, which is not affected;
+the host port only exists so developers' tools (psql, scripts) can reach the database.
+
+== 3. Fix: publish PostgreSQL on a free host port (configuration only, no code or image change) ==
+$ POSTGRES_PORT=5441 docker compose up -d --wait     # permanent fix: set POSTGRES_PORT in .env
+   Container slothub-booking Healthy 
+   Container slothub-notification Healthy 
+   Container slothub-payment Healthy 
+   Container slothub-postgres Healthy 
+   Container slothub-scheduling Healthy 
+  NAME                   STATUS                    PORTS
+  slothub-booking        Up 5 seconds (healthy)    0.0.0.0:5102->8080/tcp, [::]:5102->8080/tcp
+  slothub-notification   Up 10 seconds (healthy)   0.0.0.0:5104->8080/tcp, [::]:5104->8080/tcp
+  slothub-payment        Up 10 seconds (healthy)   0.0.0.0:5103->8080/tcp, [::]:5103->8080/tcp
+  slothub-postgres       Up 16 seconds (healthy)   0.0.0.0:5441->5432/tcp, [::]:5441->5432/tcp
+  slothub-scheduling     Up 10 seconds (healthy)   0.0.0.0:5101->8080/tcp, [::]:5101->8080/tcp
+
+== 4. Validation ==
+  PASS  slothub-postgres healthy (= healthy)
+  PASS  slothub-scheduling healthy (= healthy)
+  PASS  slothub-booking healthy (= healthy)
+  PASS  slothub-payment healthy (= healthy)
+  PASS  slothub-notification healthy (= healthy)
+POST 5102/api/v1/bookings -> 201 {"status":"HELD","id":"01a1922f-b682-7324-a078-bcb831b54465"}
+POST 5102/api/v1/bookings/01a1922f-b682-7324-a078-bcb831b54465/payment -> 200 {"status":"CONFIRMED","id":"01a1922f-b682-7324-a078-bcb831b54465"}
+  PASS  main workflow after the fix (= CONFIRMED)
+  PASS  database reachable from the host on the new port (= true)
+
+== 5. Clean-up: stop the listener, return to the default port ==
+   Container slothub-booking Healthy 
+   Container slothub-notification Healthy 
+   Container slothub-payment Healthy 
+   Container slothub-postgres Healthy 
+   Container slothub-scheduling Healthy 
+  PASS  back on the default port 5440 and healthy (= healthy)
+
+Checks passed: 12, failed: 0
+Finished: 2026-10-31T13:39:30Z
+Saved to: evidence/a2-task3-troubleshooting/run-20261031T133903Z.txt
+RESULT: PASS

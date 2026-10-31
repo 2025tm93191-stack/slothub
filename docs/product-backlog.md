@@ -349,6 +349,7 @@ PBI-046, PBI-052, PBI-058, PBI-060, PBI-061, PBI-063, PBI-064, PBI-066 → PBI-0
 
 **Out of scope — not worked on during Assignment 1.** Kept here so the product can grow without redesign.
 (PBI-083 and PBI-084 — Dockerfiles and compose — were moved to E8 for local API testing only.)
+Assignment 2 work (containerization, Compose, troubleshooting, Minikube) is planned in [product-backlog-assignment2.md](product-backlog-assignment2.md) (E11–E17, PBI-095–132); PBI-085 is superseded by E14 there.
 
 | ID | PBI | Notes | SP | Target | Status |
 |---|---|---|---|---|---|

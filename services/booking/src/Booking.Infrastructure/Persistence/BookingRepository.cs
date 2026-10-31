@@ -24,6 +24,7 @@ internal sealed class BookingRepository(BookingDbContext db, IHttpContextAccesso
 
     public async Task SaveAsync(BookingEntity booking, CancellationToken ct)
     {
+        var correlationId = http.HttpContext is { } context ? CorrelationId.Get(context) : null;
         foreach (var notification in booking.PendingNotifications)
         {
             db.Outbox.Add(new OutboxMessage
@@ -31,12 +32,12 @@ internal sealed class BookingRepository(BookingDbContext db, IHttpContextAccesso
                 Id = Guid.CreateVersion7(),
                 Type = JsonNamingPolicy.SnakeCaseUpper.ConvertName(notification.EventType.ToString()),
                 Payload = JsonSerializer.Serialize(notification, PayloadJson),
+                CorrelationId = correlationId,
                 CreatedAt = clock.GetUtcNow(),
                 NextAttemptAt = clock.GetUtcNow(),
             });
         }
 
-        var correlationId = http.HttpContext is { } context ? CorrelationId.Get(context) : null;
         foreach (var entry in db.ChangeTracker.Entries<BookingStatusChange>().Where(e => e.State == EntityState.Added))
         {
             entry.Property(BookingDbContext.CorrelationIdColumn).CurrentValue = correlationId;

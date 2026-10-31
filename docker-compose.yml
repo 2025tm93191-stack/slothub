@@ -1,9 +1,13 @@
-# Local stack for SlotHub.
-#   docker compose up -d --build --wait   → PostgreSQL + all 4 services (APIs on localhost:5101-5104)
-#   docker compose up -d --wait postgres  → only the database (then run services with scripts/run-service.sh)
+# SlotHub — complete application on Docker Compose.
 #
-# One PostgreSQL server hosting four databases, each owned by its own user.
-# A user can connect only to its own database (CONNECT revoked from PUBLIC).
+#   cp .env.example .env                  # once; set the passwords
+#   docker compose up --build             # PostgreSQL + all 4 services (APIs on localhost:5101-5104)
+#   docker compose up -d --build --wait   # same, detached, returns when every container is healthy
+#   docker compose up -d --wait postgres  # only the database (then run services with scripts/run-service.sh)
+#
+# Secrets are never written here: every password comes from .env (git-ignored), and Compose refuses to start
+# if one is missing. One PostgreSQL server hosts four databases, each owned by its own user; a user can
+# connect only to its own database (CONNECT revoked from PUBLIC).
 name: slothub
 
 x-service-defaults: &service-defaults
@@ -12,6 +16,10 @@ x-service-defaults: &service-defaults
     postgres:
       condition: service_healthy
 
+x-build-args: &build-args
+  VERSION: ${SLOTHUB_VERSION:-1.0.0}
+  REVISION: ${GIT_REVISION:-unknown}
+
 services:
   postgres:
     image: postgres:17-alpine
@@ -19,11 +27,11 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_ADMIN_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:-postgres}
-      SCHEDULING_DB_PASSWORD: ${SCHEDULING_DB_PASSWORD:-scheduling_pw}
-      BOOKING_DB_PASSWORD: ${BOOKING_DB_PASSWORD:-booking_pw}
-      PAYMENT_DB_PASSWORD: ${PAYMENT_DB_PASSWORD:-payment_pw}
-      NOTIFICATION_DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD:-notification_pw}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?Set POSTGRES_ADMIN_PASSWORD in .env (copy .env.example)}
+      SCHEDULING_DB_PASSWORD: ${SCHEDULING_DB_PASSWORD:?Set SCHEDULING_DB_PASSWORD in .env (copy .env.example)}
+      BOOKING_DB_PASSWORD: ${BOOKING_DB_PASSWORD:?Set BOOKING_DB_PASSWORD in .env (copy .env.example)}
+      PAYMENT_DB_PASSWORD: ${PAYMENT_DB_PASSWORD:?Set PAYMENT_DB_PASSWORD in .env (copy .env.example)}
+      NOTIFICATION_DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD:?Set NOTIFICATION_DB_PASSWORD in .env (copy .env.example)}
     ports:
       - "${POSTGRES_PORT:-5440}:5432"
     volumes:
@@ -40,10 +48,11 @@ services:
     build:
       context: .
       dockerfile: services/scheduling/Dockerfile
-    image: slothub-scheduling
+      args: *build-args
+    image: slothub-scheduling:${SLOTHUB_VERSION:-1.0.0}
     container_name: slothub-scheduling
     environment:
-      ConnectionStrings__Default: Host=postgres;Port=5432;Database=scheduling_db;Username=scheduling_user;Password=${SCHEDULING_DB_PASSWORD:-scheduling_pw};GSS Encryption Mode=Disable
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=scheduling_db;Username=scheduling_user;Password=${SCHEDULING_DB_PASSWORD:?Set SCHEDULING_DB_PASSWORD in .env};GSS Encryption Mode=Disable
       DB_MIGRATE_ON_STARTUP: "true"
       HOLD_TTL_SECONDS: ${HOLD_TTL_SECONDS:-30}
       HOLD_SWEEP_INTERVAL_SECONDS: ${HOLD_SWEEP_INTERVAL_SECONDS:-5}
@@ -55,10 +64,22 @@ services:
     build:
       context: .
       dockerfile: services/booking/Dockerfile
-    image: slothub-booking
+      args: *build-args
+    image: slothub-booking:${SLOTHUB_VERSION:-1.0.0}
     container_name: slothub-booking
+    # Start only once the services it calls synchronously are healthy. Notification is reached through the
+    # outbox, so Booking must not depend on it being up (an SMS outage never blocks bookings).
+    depends_on:
+      postgres:
+        condition: service_healthy
+      scheduling:
+        condition: service_healthy
+      payment:
+        condition: service_healthy
+      notification:
+        condition: service_started
     environment:
-      ConnectionStrings__Default: Host=postgres;Port=5432;Database=booking_db;Username=booking_user;Password=${BOOKING_DB_PASSWORD:-booking_pw};GSS Encryption Mode=Disable
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=booking_db;Username=booking_user;Password=${BOOKING_DB_PASSWORD:?Set BOOKING_DB_PASSWORD in .env};GSS Encryption Mode=Disable
       DB_MIGRATE_ON_STARTUP: "true"
       Services__Scheduling__BaseUrl: http://scheduling:8080
       Services__Payment__BaseUrl: http://payment:8080
@@ -76,10 +97,11 @@ services:
     build:
       context: .
       dockerfile: services/payment/Dockerfile
-    image: slothub-payment
+      args: *build-args
+    image: slothub-payment:${SLOTHUB_VERSION:-1.0.0}
     container_name: slothub-payment
     environment:
-      ConnectionStrings__Default: Host=postgres;Port=5432;Database=payment_db;Username=payment_user;Password=${PAYMENT_DB_PASSWORD:-payment_pw};GSS Encryption Mode=Disable
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=payment_db;Username=payment_user;Password=${PAYMENT_DB_PASSWORD:?Set PAYMENT_DB_PASSWORD in .env};GSS Encryption Mode=Disable
       DB_MIGRATE_ON_STARTUP: "true"
       CHAOS_FAILURE_RATE: ${PAYMENT_CHAOS_FAILURE_RATE:-0}
       CHAOS_LATENCY_MS: ${PAYMENT_CHAOS_LATENCY_MS:-0}
@@ -92,10 +114,11 @@ services:
     build:
       context: .
       dockerfile: services/notification/Dockerfile
-    image: slothub-notification
+      args: *build-args
+    image: slothub-notification:${SLOTHUB_VERSION:-1.0.0}
     container_name: slothub-notification
     environment:
-      ConnectionStrings__Default: Host=postgres;Port=5432;Database=notification_db;Username=notification_user;Password=${NOTIFICATION_DB_PASSWORD:-notification_pw};GSS Encryption Mode=Disable
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=notification_db;Username=notification_user;Password=${NOTIFICATION_DB_PASSWORD:?Set NOTIFICATION_DB_PASSWORD in .env};GSS Encryption Mode=Disable
       DB_MIGRATE_ON_STARTUP: "true"
       NOTIFY_MAX_ATTEMPTS: ${NOTIFY_MAX_ATTEMPTS:-5}
       CHAOS_FAILURE_RATE: ${NOTIFICATION_CHAOS_FAILURE_RATE:-0}

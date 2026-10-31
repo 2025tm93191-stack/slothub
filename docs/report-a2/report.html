@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SlotHub — Deployment Report</title>
+<style>
+  @page { size: A4; margin: 14mm 14mm 15mm 14mm; }
+  :root { --ink: #1d2433; --muted: #5b6475; --rule: #d7dbe3; --accent: #1f5fa8; --bg-soft: #f4f6fa; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 9.4pt; line-height: 1.4; color: var(--ink); margin: 0; background: #fff; }
+  h1 { font-size: 18pt; margin: 0 0 3px; }
+  h2 { font-size: 12.5pt; margin: 14px 0 5px; padding-bottom: 3px; border-bottom: 1.5px solid var(--accent); color: var(--accent); break-after: avoid; }
+  h3 { font-size: 10.2pt; margin: 10px 0 3px; break-after: avoid; }
+  p { margin: 3px 0 6px; }
+  ul { margin: 2px 0 6px; padding-left: 17px; }
+  li { margin: 1px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 4px 0 8px; font-size: 8.5pt; }
+  th, td { border: 1px solid var(--rule); padding: 3px 5px; vertical-align: top; text-align: left; }
+  th { background: var(--bg-soft); font-weight: 600; }
+  tr { break-inside: avoid; }
+  code { font-family: Menlo, Consolas, monospace; font-size: 8.1pt; background: var(--bg-soft); padding: 0 2px; border-radius: 2px; }
+  pre { font-family: Menlo, Consolas, monospace; font-size: 7.8pt; background: var(--bg-soft); padding: 5px 7px; border-radius: 3px; white-space: pre-wrap; margin: 3px 0 7px; break-inside: avoid; }
+  .meta { color: var(--muted); font-size: 8.8pt; margin-bottom: 8px; }
+  .meta td { border: none; padding: 1px 10px 1px 0; }
+  .figure { margin: 4px 0 8px; text-align: center; break-inside: avoid; }
+  .caption { font-size: 8.1pt; color: var(--muted); margin-top: 2px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .callout { border-left: 3px solid var(--accent); background: var(--bg-soft); padding: 4px 8px; margin: 5px 0 8px; font-size: 8.9pt; break-inside: avoid; }
+  .todo { background: #fff3c4; padding: 0 3px; }
+  .pagebreak { break-before: page; }
+  .small { font-size: 8.3pt; }
+</style>
+</head>
+<body>
+
+<h1>SlotHub — Containerization and Deployment Report</h1>
+<table class="meta">
+  <tr><td><b>Course</b></td><td>Scalable Services (SEZG583), Assignment 2</td></tr>
+  <tr><td><b>Team</b></td><td>Subhodip Banerjee (2025TM93191), J K Shekar (2025TM93095), Harshit Pathak <span class="todo">[ID]</span>, Ria Mishra <span class="todo">[ID]</span></td></tr>
+  <tr><td><b>Repository</b></td><td>https://github.com/2025tm93191-stack/slothub</td></tr>
+  <tr><td><b>Demo video</b></td><td><span class="todo">[Google Drive link]</span></td></tr>
+  <tr><td><b>Scope</b></td><td>Part A (Tasks 1–3) + Part B: Minikube deployment, scaling and self-healing</td></tr>
+</table>
+
+<h2>1. Application and deployment architecture</h2>
+<p><b>SlotHub</b> (Assignment 1) is a multi-tenant slot-booking platform of four .NET 10 microservices. <b>Scheduling</b> owns
+slots and concurrency-safe holds. <b>Booking</b> orchestrates hold → pay → confirm. <b>Payment</b> is a mock gateway and
+<b>Notification</b> a mock SMS/email sender. Each service has its own PostgreSQL database and login. The main workflow is
+create booking (hold a slot), pay, confirm, notify. It exercises synchronous REST calls between services, an outbox, and idempotent retries.</p>
+<div class="two">
+<div class="figure">
+<pre class="mermaid">
+flowchart TB
+  host["Host: localhost:5101-5104, 5440"]
+  subgraph compose["Docker Compose project slothub · network slothub_default"]
+    b["booking<br/>slothub-booking:1.0.0"]
+    s["scheduling<br/>slothub-scheduling:1.0.0"]
+    p["payment<br/>slothub-payment:1.0.0"]
+    n["notification<br/>slothub-notification:1.0.0"]
+    pg[("postgres:17-alpine<br/>4 databases, 4 logins")]
+    v[["volume postgres-data"]]
+  end
+  env[".env (git-ignored)<br/>passwords"]
+  host -- "5102→8080" --> b
+  host -- "5101→8080" --> s
+  b -- "HTTP scheduling:8080" --> s
+  b -- "HTTP payment:8080" --> p
+  b -. "outbox, HTTP notification:8080" .-> n
+  s & b & p & n -- "postgres:5432" --> pg
+  pg --- v
+  env -. "environment variables at run time" .-> compose
+</pre>
+<div class="caption">Figure 1: Docker Compose deployment. Containers reach each other by service name on the Compose network; only API ports and the database's host port are published.</div>
+</div>
+<div class="figure">
+<pre class="mermaid">
+flowchart TB
+  t["minikube tunnel → localhost:5101-5104"]
+  subgraph ns["Minikube · namespace slothub"]
+    lb["4 × Service LoadBalancer<br/>&lt;svc&gt;-external :510x"]
+    cip["4 × Service ClusterIP<br/>&lt;svc&gt;:8080"]
+    d["4 × Deployment<br/>probes, 1–3 replicas"]
+    j["4 × migration Job<br/>MIGRATE_ONLY=true"]
+    ss[("StatefulSet postgres<br/>+ PVC 1Gi")]
+    cm["ConfigMaps · Secret slothub-db"]
+  end
+  t --> lb --> d
+  d -- "service-to-service" --> cip --> d
+  d -- "postgres:5432" --> ss
+  j --> ss
+  cm -. "envFrom / secretKeyRef" .-> d
+</pre>
+<div class="caption">Figure 2: Kubernetes deployment (Part B). Same images, same environment variables; the Secret is created from <code>.env</code> by the deploy script.</div>
+</div>
+</div>
+
+<h2>2. Docker containerization (Task 1)</h2>
+<ul>
+  <li><b>One Dockerfile per service</b> (<code>services/&lt;name&gt;/Dockerfile</code>), multi-stage. The SDK stage restores from project files first (a cached
+  layer) and then publishes. The runtime stage has only the ASP.NET runtime and the app (≈ 386 MB). It runs as non-root user <code>1654</code>, exposes 8080, and carries
+  OCI labels (version, git revision). Images are tagged <code>slothub-&lt;service&gt;:1.0.0</code>.</li>
+  <li><b>Health check in the image:</b> <code>HEALTHCHECK</code> runs <code>infra/docker/healthcheck.sh</code>, an HTTP GET of <code>/health/ready</code> over bash's
+  <code>/dev/tcp</code> (the runtime image has no curl). A container is <i>healthy</i> only when the service is up <i>and</i> its database is reachable.</li>
+  <li><b>Configuration only through environment variables:</b> connection strings, service URLs, timeouts, hold TTL, chaos settings. Nothing environment-specific is in an image.</li>
+  <li><b>No secrets in images or the repository:</b> <code>.dockerignore</code> excludes <code>.env</code>. Passwords come from the git-ignored <code>.env</code>, and
+  <code>docker-compose.yml</code> uses <code>${VAR:?…}</code>, so Compose refuses to start without them. <code>.env.example</code> holds <code>CHANGE_ME</code> placeholders. The database runs as a container.</li>
+</ul>
+<p class="small"><b>Evidence</b> (<code>evidence/a2-task1-containerization/</code>, 22/22 checks): <code>docker compose build --no-cache</code> with every build stage (raw log
+attached), 4 separate images with labels, containers created, started and <i>healthy</i>; per image, no password in env vars or history and no <code>.env</code> file.
+For the repo, <code>.env</code> is untracked and the examples hold placeholders only.</p>
+
+<h2>3. Docker Compose deployment (Task 2)</h2>
+<p><code>cp .env.example .env</code> then <b><code>docker compose up --build</code></b> starts PostgreSQL and the four services. Start-up is <b>health-gated</b>:
+services wait for PostgreSQL to be <i>healthy</i>, and Booking waits for Scheduling and Payment to be <i>healthy</i>. It only waits for Notification to <i>start</i>,
+because notifications go through an outbox and an SMS outage must never block bookings. Restart policy <code>unless-stopped</code> and a named volume keep the data.</p>
+<table class="small">
+  <tr><th style="width:30%">Requirement</th><th>Evidence (<code>evidence/a2-task2-compose/</code>)</th></tr>
+  <tr><td>All services and the database running</td><td><code>docker compose ps</code>: 5 containers <i>healthy</i>; <code>/health/ready</code> of each service</td></tr>
+  <tr><td>Communication between microservices</td><td>One booking sent with <code>X-Correlation-Id: trace-…</code> appears in the logs of all four containers: Booking (held, confirmed),
+  Scheduling (hold reserved, confirmed), Payment (charge approved, idempotency key stored), Notification (2 messages queued via the outbox). We made the outbox
+  forward the correlation ID for this, with a new migration.</td></tr>
+  <tr><td>Main workflow</td><td>Full <code>e2e-booking.sh</code>, 26 checks: hold → pay → confirm → SMS + email; declined payment releases the slot; gateway outage → retries,
+  circuit breaker, then recovery with exactly one charge</td></tr>
+  <tr><td>Logs and health</td><td><code>docker compose logs</code> excerpt per service; <code>docker inspect</code> health state and check configuration</td></tr>
+  <tr><td>Stop and restart</td><td>9/9: <code>stop</code>→<code>start</code>, <code>down</code>→<code>up</code> (containers and network removed, volume kept), <code>restart booking</code>.
+  A booking confirmed before each step is still there and new bookings succeed</td></tr>
+</table>
+
+<h2>4. Situated learning: deployment troubleshooting (Task 3)</h2>
+<p><b>Problem.</b> In Assignment 1, the first <code>docker compose up</code> failed before any service started:
+<code>ports are not available: exposing port TCP 0.0.0.0:5432 … bind: address already in use</code>. Every container stayed <code>Created</code>. Moving the
+mapping to 5433 failed the same way. The code had worked in development, where <code>dotnet run</code> used a PostgreSQL installed on the laptop.</p>
+<p><b>Diagnosis.</b> <code>scripts/a2-troubleshoot-demo.sh</code> reproduces it safely: a throw-away process holds the database's host port. Then we used:</p>
+<table class="small">
+  <tr><th style="width:38%">Command</th><th>Finding</th></tr>
+  <tr><td><code>docker compose ps -a</code></td><td>all containers <code>Created</code>: the failure is at container start, not inside an application</td></tr>
+  <tr><td><code>docker inspect slothub-postgres</code> (<code>.State</code>, <code>.HostConfig.PortBindings</code>)</td><td>state <code>created</code>; it is trying to bind container 5432 to a host port</td></tr>
+  <tr><td><code>docker compose logs postgres</code></td><td>0 lines: PostgreSQL never ran, so the cause is outside the container</td></tr>
+  <tr><td><code>lsof -nP -iTCP:&lt;port&gt; -sTCP:LISTEN</code></td><td>a non-Docker process owns the port (originally the laptop's own PostgreSQL; 5433/5434 belonged to other projects)</td></tr>
+</table>
+<p><b>Solution and validation.</b> The host side of the mapping was hard-coded. It became configuration with an unused default,
+<code>"${POSTGRES_PORT:-5440}:5432"</code>, set in <code>.env</code>. Container-to-container connections keep using <code>postgres:5432</code>, and no code or image changed.
+After the fix, all 5 containers are healthy, a booking is held, paid and confirmed, and the database answers on the new host port (12/12 checks; full workflow in Task 2 evidence).</p>
+<p><b>Learning.</b> Host ports are shared and scarce; container ports are not. Publish as few as possible, make them configurable, and never publish
+the database in production. "Works on my machine" hid a dependency on a locally installed database, and containerization made the environment explicit.
+Diagnose from the outside in (state → configuration → logs → host), where empty logs pointed away from the application. Platform details matter:
+on macOS, Docker publishes ports on <code>[::]</code>, so only a dual-stack listener collides. In a real deployment we would run pre-flight port checks, keep ports in environment variables,
+use health-gated start-up, and in Kubernetes use ClusterIP Services so internal components need no host ports at all.</p>
+
+<h2>5. Advanced: Minikube deployment, scaling and self-healing (Part B)</h2>
+<ul>
+  <li><b>Manifests</b> (<code>deploy/k8s/</code>): namespace; PostgreSQL StatefulSet with a 1 Gi PVC and an init script from a ConfigMap (4 databases, 4 logins);
+  a ConfigMap per service; 4 migration <b>Jobs</b>; per service a Deployment (startup and liveness probes on <code>/health</code>, readiness on <code>/health/ready</code>,
+  requests and limits), a ClusterIP Service for in-cluster calls and a LoadBalancer Service on 5101–5104 for the host (<code>minikube tunnel</code>).</li>
+  <li><b>Secret</b> <code>slothub-db</code> is created from <code>.env</code> by <code>scripts/k8s-deploy.sh</code> and is never committed. Pods build the connection string with <code>$(DB_PASSWORD)</code>.</li>
+  <li><b>Migrations once, not per replica:</b> the same image with <code>MIGRATE_ONLY=true</code> migrates and exits (new code path), so replicas never migrate concurrently.</li>
+  <li><b>Images</b> are built with Docker and streamed into the node's containerd (<code>docker save | ctr images import</code>), with no registry.</li>
+</ul>
+<table class="small">
+  <tr><th style="width:30%">Demonstration</th><th>Result (<code>evidence/a2-advanced-k8s/</code>)</th></tr>
+  <tr><td>Main workflow through Kubernetes</td><td>17/17: objects healthy, Jobs completed; one booking traced through the Booking, Scheduling, Payment and Notification <b>pods</b>; full <code>e2e-booking.sh</code> 26/26 and Challenge 1 (1 of 20) <b>through the Kubernetes Services</b></td></tr>
+  <tr><td>Scaling</td><td><code>kubectl scale … --replicas=3</code> (Scheduling, Booking): 30 simultaneous holds through the load-balanced Service were spread over all 3 pods, with still exactly 1 success.
+  With 3 hold-expiry workers, each of 5 expired holds was released exactly once (<code>FOR UPDATE SKIP LOCKED</code>)</td></tr>
+  <tr><td>Self-healing</td><td>A Booking pod was deleted while 6 bookings were made: all 6 confirmed, a replacement pod was created and 3/3 were ready again. The only Payment pod was deleted, recreated, and the flow worked</td></tr>
+  <tr><td>Readiness</td><td>PostgreSQL scaled to 0: all service pods <code>0/1</code> and their endpoints <code>ready=false</code>. Back to 1: pods ready, data intact on the PVC</td></tr>
+</table>
+<div class="callout"><b>Why scaling is safe:</b> no state lives in a pod. Capacity is one atomic SQL update, idempotency a database unique key, and expiry uses <code>SKIP LOCKED</code>, the
+Assignment 1 challenge mechanisms. <b>Kubernetes problem we hit:</b> the first deploy imported images built before the <code>MIGRATE_ONLY</code> change, so the migration Jobs ran a
+web server and never completed (<code>kubectl get pods</code> showed them <code>Running</code>, <code>kubectl logs</code> showed <code>relation "holds" does not exist</code>). The fix was to rebuild and re-import. Lesson: give each build a distinct tag.</div>
+
+<div class="pagebreak"></div>
+<h2>Appendix A: Individual contribution summary</h2>
+<table class="small">
+  <tr><th style="width:24%">Member</th><th>Contribution to Assignment 2</th><th style="width:10%">Share</th></tr>
+  <tr><td>Subhodip Banerjee (2025TM93191)</td><td><span class="todo">[what this member did]</span></td><td><span class="todo">[%]</span></td></tr>
+  <tr><td>J K Shekar (2025TM93095)</td><td><span class="todo">[what this member did]</span></td><td><span class="todo">[%]</span></td></tr>
+  <tr><td>Harshit Pathak <span class="todo">[ID]</span></td><td><span class="todo">[what this member did]</span></td><td><span class="todo">[%]</span></td></tr>
+  <tr><td>Ria Mishra <span class="todo">[ID]</span></td><td><span class="todo">[what this member did]</span></td><td><span class="todo">[%]</span></td></tr>
+</table>
+<p class="small">Fill in what each member actually did; it must match the commit history and the video. Every member must be able to explain the Dockerfiles,
+Compose file, troubleshooting evidence and Kubernetes manifests they present.</p>
+
+<h2>Appendix B: AI-use declaration</h2>
+<table class="small">
+  <tr><th style="width:22%">Tool</th><th>Used for</th></tr>
+  <tr><td>Claude (Anthropic), via Claude Code</td><td>Turning the brief into a backlog; writing the Dockerfile changes, health-check script, Compose changes, Kubernetes manifests,
+  deploy/verification/troubleshooting scripts and the first draft of this report; diagnosing failures found while running them.</td></tr>
+  <tr><td><span class="todo">[other tools, if any]</span></td><td><span class="todo">[…]</span></td></tr>
+</table>
+<p class="small"><span class="todo">[Team to confirm or edit this statement.]</span></p>
+
+<h2>Appendix C: How to reproduce</h2>
+<pre>cp .env.example .env                     # set passwords
+docker compose up --build                # Part A deployment
+./scripts/a2-build-evidence.sh --no-cache && ./scripts/a2-verify-deployment.sh && ./scripts/a2-restart-demo.sh
+./scripts/a2-troubleshoot-demo.sh        # Task 3
+docker compose stop && ./scripts/k8s-deploy.sh && minikube tunnel   # Part B (tunnel in a second terminal)
+./scripts/a2-k8s-verify.sh && ./scripts/a2-k8s-scale-heal.sh</pre>
+
+<script src="../report/assets/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({ startOnLoad: false, theme: "neutral", securityLevel: "loose",
+    flowchart: { htmlLabels: true, curve: "basis" }, fontFamily: "Helvetica Neue, Arial, sans-serif" });
+  mermaid.run({ querySelector: ".mermaid" });
+</script>
+</body>
+</html>

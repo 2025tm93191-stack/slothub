@@ -22,7 +22,11 @@ app.UseServiceDefaults(serviceName);
 app.MapGroup("/api/v1").MapNotificationEndpoints();
 app.MapChaosEndpoints();
 
-await app.MigrateDatabaseIfEnabledAsync<NotificationDbContext>();
+if (await app.MigrateDatabaseIfEnabledAsync<NotificationDbContext>())
+{
+    return; // MIGRATE_ONLY: migrations applied, exit (Kubernetes migration Job)
+}
+
 await app.RunAsync();
 
 public partial class Program;

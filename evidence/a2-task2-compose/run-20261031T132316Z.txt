@@ -1,0 +1,70 @@
+Run:      restart-20261031T132316Z
+Started:  2026-10-31T13:23:16Z
+Command:  scripts/a2-restart-demo.sh
+
+
+== 0. Before: create and confirm a booking ==
+POST 5102/api/v1/bookings -> 201 {"status":"HELD","id":"01a19220-f8fc-7283-aa41-898f031e87ff"}
+POST 5102/api/v1/bookings/01a19220-f8fc-7283-aa41-898f031e87ff/payment -> 200 {"status":"CONFIRMED","id":"01a19220-f8fc-7283-aa41-898f031e87ff"}
+  PASS  booking 01a19220-f8fc-7283-aa41-898f031e87ff (= CONFIRMED)
+
+== A. docker compose stop → start ==
+ Container slothub-booking Stopped 
+ Container slothub-notification Stopped 
+ Container slothub-payment Stopped 
+ Container slothub-postgres Stopped 
+ Container slothub-scheduling Stopped 
+NAME                   STATUS
+slothub-booking        Exited (0) Less than a second ago
+slothub-notification   Exited (0) Less than a second ago
+slothub-payment        Exited (0) Less than a second ago
+slothub-postgres       Exited (0) Less than a second ago
+slothub-scheduling     Exited (0) Less than a second ago
+  PASS  API unreachable while stopped (= unreachable)
+ Container slothub-booking Healthy 
+ Container slothub-notification Healthy 
+ Container slothub-payment Healthy 
+ Container slothub-postgres Healthy 
+ Container slothub-scheduling Healthy 
+NAME                   STATUS
+slothub-booking        Up 5 seconds (healthy)
+slothub-notification   Up 11 seconds (healthy)
+slothub-payment        Up 11 seconds (healthy)
+slothub-postgres       Up 16 seconds (healthy)
+slothub-scheduling     Up 11 seconds (healthy)
+  PASS  booking from before the stop (= CONFIRMED)
+  PASS  new booking flow after start (= CONFIRMED)
+
+== B. docker compose down → up (containers removed, volume kept) ==
+ Container slothub-booking Removed 
+ Container slothub-notification Removed 
+ Container slothub-payment Removed 
+ Container slothub-postgres Removed 
+ Container slothub-scheduling Removed 
+ Network slothub_default Removed 
+Containers left: 0; volume: 1 x slothub_postgres-data
+  PASS  no containers after down (= 0)
+ Container slothub-booking Healthy 
+ Container slothub-notification Healthy 
+ Container slothub-payment Healthy 
+ Container slothub-postgres Healthy 
+ Container slothub-scheduling Healthy 
+NAME                   STATUS
+slothub-booking        Up 5 seconds (healthy)
+slothub-notification   Up 11 seconds (healthy)
+slothub-payment        Up 11 seconds (healthy)
+slothub-postgres       Up 16 seconds (healthy)
+slothub-scheduling     Up 11 seconds (healthy)
+  PASS  booking from before the down (data in the volume) (= CONFIRMED)
+  PASS  new booking flow after up (= CONFIRMED)
+
+== C. docker compose restart booking ==
+ Container slothub-booking Started 
+  ... booking healthy again after 5s
+  PASS  booking container health (= healthy)
+  PASS  new booking flow after restart (= CONFIRMED)
+
+Checks passed: 9, failed: 0
+Finished: 2026-10-31T13:24:00Z
+Saved to: evidence/a2-task2-compose/run-20261031T132316Z.txt
+RESULT: PASS

@@ -1,0 +1,159 @@
+Run:      verify-20261031T132240Z
+Started:  2026-10-31T13:22:40Z
+Command:  scripts/a2-verify-deployment.sh
+
+
+== 1. Containers (docker compose ps) ==
+NAME                   IMAGE                        STATUS                    PORTS
+slothub-booking        slothub-booking:1.0.0        Up 8 seconds (healthy)    0.0.0.0:5102->8080/tcp, [::]:5102->8080/tcp
+slothub-notification   slothub-notification:1.0.0   Up 13 seconds (healthy)   0.0.0.0:5104->8080/tcp, [::]:5104->8080/tcp
+slothub-payment        slothub-payment:1.0.0        Up 14 seconds (healthy)   0.0.0.0:5103->8080/tcp, [::]:5103->8080/tcp
+slothub-postgres       postgres:17-alpine           Up 7 days (healthy)       0.0.0.0:5440->5432/tcp, [::]:5440->5432/tcp
+slothub-scheduling     slothub-scheduling:1.0.0     Up 14 seconds (healthy)   0.0.0.0:5101->8080/tcp, [::]:5101->8080/tcp
+  PASS  slothub-postgres is healthy (= healthy)
+  PASS  slothub-scheduling is healthy (= healthy)
+  PASS  slothub-booking is healthy (= healthy)
+  PASS  slothub-payment is healthy (= healthy)
+  PASS  slothub-notification is healthy (= healthy)
+
+== 2. Readiness endpoints (service up + own database reachable) ==
+GET 5101/health/ready -> 200 {"status":"HEALTHY"}
+  PASS  Scheduling /health/ready (= HEALTHY)
+GET 5102/health/ready -> 200 {"status":"HEALTHY"}
+  PASS  Booking /health/ready (= HEALTHY)
+GET 5103/health/ready -> 200 {"status":"HEALTHY"}
+  PASS  Payment /health/ready (= HEALTHY)
+GET 5104/health/ready -> 200 {"status":"HEALTHY"}
+  PASS  Notification /health/ready (= HEALTHY)
+
+== 3. Inter-service communication, traced by one correlation ID ==
+Correlation ID for this booking: trace-verify-20261031T132240Z
+POST /api/v1/bookings          → {"id":"01a19220-6dbb-7265-ac31-9328103246c2","status":"HELD","holdId":"01a19220-6e29-7e90-ab26-efa1a44d6a3e"}
+POST /api/v1/bookings/{id}/payment → {"status":"CONFIRMED","paymentId":"01a19220-6ed7-716e-ba75-943380ee3927"}
+  PASS  booking confirmed (= CONFIRMED)
+  ... confirmation delivered by Notification after 2s
+
+Log lines carrying trace-verify-20261031T132240Z in each container (docker compose logs):
+  booking       9 lines
+  PASS  booking logged the traced request (= true)
+  scheduling    4 lines
+  PASS  scheduling logged the traced request (= true)
+  payment       3 lines
+  PASS  payment logged the traced request (= true)
+  notification  4 lines
+  PASS  notification logged the traced request (= true)
+
+-- booking
+13:22:41.372 Booking 01a19220-6dbb-7265-ac31-9328103246c2 HELD with hold 01a19220-6e29-7e90-ab26-efa1a44d6a3e until 10/31/2026 13:23:11 +00:00
+13:22:41.391 Idempotency key "f52f742b-8856-490c-9c43-89a013debdce" stored with 201 for "POST /api/v1/bookings"
+13:22:41.391 HTTP "POST" "/api/v1/bookings" responded 201 in 205.0 ms
+13:22:41.673 Booking 01a19220-6dbb-7265-ac31-9328103246c2 CONFIRMED with payment 01a19220-6ed7-716e-ba75-943380ee3927
+13:22:41.678 Idempotency key "78ebddfd-09a8-4b48-9e6c-e0eceb82f910" stored with 200 for "POST /api/v1/bookings/01a19220-6dbb-7265-ac31-9328103246c2/payment"
+13:22:41.679 HTTP "POST" "/api/v1/bookings/01a19220-6dbb-7265-ac31-9328103246c2/payment" responded 200 in 250.7 ms
+-- scheduling
+13:22:41.342 Hold 01a19220-6e29-7e90-ab26-efa1a44d6a3e reserved slot 01a19220-6d6f-7208-8ee9-c34dbfedc7d3 for booking 01a19220-6dbb-7265-ac31-9328103246c2 until 10/31/2026 13:23:11 +00:00
+13:22:41.353 HTTP "POST" "/api/v1/holds" responded 201 in 46.4 ms
+13:22:41.655 Hold 01a19220-6e29-7e90-ab26-efa1a44d6a3e moved Held -> Confirmed; capacity returned: False
+13:22:41.656 HTTP "POST" "/api/v1/holds/01a19220-6e29-7e90-ab26-efa1a44d6a3e/confirm" responded 200 in 9.9 ms
+-- payment
+13:22:41.496 Gateway approved 50000 "INR" for booking 01a19220-6dbb-7265-ac31-9328103246c2
+13:22:41.639 Idempotency key "pay-01a19220-6dbb-7265-ac31-9328103246c2" stored with 201 for "POST /api/v1/payments"
+13:22:41.639 HTTP "POST" "/api/v1/payments" responded 201 in 169.2 ms
+-- notification
+13:22:42.956 Notification 01a19220-7454-775f-be5b-b5fcda50a4bb BookingConfirmed queued for booking 01a19220-6dbb-7265-ac31-9328103246c2
+13:22:42.958 HTTP "POST" "/api/v1/notifications" responded 202 in 86.9 ms
+13:22:42.961 Notification 01a19220-748f-7252-b7ae-0e7d574befd7 BookingConfirmed queued for booking 01a19220-6dbb-7265-ac31-9328103246c2
+13:22:42.961 HTTP "POST" "/api/v1/notifications" responded 202 in 2.0 ms
+
+== 4. Container health-check details (docker inspect) ==
+{
+  "Status": "healthy",
+  "FailingStreak": 0,
+  "last_checks": [
+    {
+      "Start": "13:22:37",
+      "ExitCode": 0
+    }
+  ]
+}
+{"Test":["CMD","healthcheck"],"Interval":10000000000,"Timeout":5000000000,"StartPeriod":40000000000,"Retries":3}
+
+== 5. Main workflow end to end (scripts/e2e-booking.sh) ==
+  │ Run:      e2e-20261031T132244Z
+  │ Started:  2026-10-31T13:22:44Z
+  │ Command:  scripts/e2e-booking.sh
+  │ 
+  │ 
+  │ == 0. All services healthy ==
+  │ GET 5101/health/ready -> 200 {"status":"HEALTHY"}
+  │   PASS  Scheduling ready (= HEALTHY)
+  │ GET 5102/health/ready -> 200 {"status":"HEALTHY"}
+  │   PASS  Booking ready (= HEALTHY)
+  │ GET 5103/health/ready -> 200 {"status":"HEALTHY"}
+  │   PASS  Payment ready (= HEALTHY)
+  │ GET 5104/health/ready -> 200 {"status":"HEALTHY"}
+  │   PASS  Notification ready (= HEALTHY)
+  │ 
+  │ == 1. Happy path: hold → pay → confirm → notify ==
+  │ POST 5102/api/v1/bookings -> 201 {"status":"HELD","id":"01a19220-7b21-77c9-8c2f-faaaf5d35556"}
+  │   PASS  create booking → 201 (= 201)
+  │   PASS  booking status (= HELD)
+  │ POST 5102/api/v1/bookings/01a19220-7b21-77c9-8c2f-faaaf5d35556/payment -> 200 {"status":"CONFIRMED","id":"01a19220-7b21-77c9-8c2f-faaaf5d35556"}
+  │   PASS  pay → 200 (= 200)
+  │   PASS  booking status (= CONFIRMED)
+  │   PASS  amount charged (= 50000)
+  │ GET 5101/api/v1/holds/01a19220-7b28-7539-b0c6-0332244a5ac9 -> 200 {"status":"CONFIRMED","id":"01a19220-7b28-7539-b0c6-0332244a5ac9"}
+  │   PASS  hold status in Scheduling (= CONFIRMED)
+  │ GET 5101/api/v1/slots/01a19220-7b04-74c1-8230-41c2d11f9a7d -> 200 {"id":"01a19220-7b04-74c1-8230-41c2d11f9a7d"}
+  │   PASS  slot reserved (= 1)
+  │ GET 5103/api/v1/payments?bookingId=01a19220-7b21-77c9-8c2f-faaaf5d35556 -> 200 
+  │   PASS  payments for booking (= 1)
+  │   PASS  payment status (= SUCCEEDED)
+  │   ... confirmation SMS + email sent after 1s
+  │ GET 5104/api/v1/notifications?bookingId=01a19220-7b21-77c9-8c2f-faaaf5d35556 -> 200 {}
+  │   PASS  BOOKING_CONFIRMED notifications sent (SMS + EMAIL) (= 2)
+  │   message: Your booking 01a19220-7b21-77c9-8c2f-faaaf5d35556 on 2026-11-01 13:00 UTC is confirmed. Amount paid: INR 500.00.
+  │ 
+  │ == 2. Failure path: payment declined → booking FAILED, slot released ==
+  │ POST 5102/api/v1/bookings -> 201 {"status":"HELD","id":"01a19220-80a1-70d3-a99a-dabe2b8597bd"}
+  │ GET 5101/api/v1/slots/01a19220-8084-7747-b2ad-6f1c246fb3df -> 200 {"id":"01a19220-8084-7747-b2ad-6f1c246fb3df"}
+  │   PASS  slot reserved while HELD (= 1)
+  │   (chaos on payment: failureRate=1 latencyMs=0 mode=DECLINE)
+  │ POST 5102/api/v1/bookings/01a19220-80a1-70d3-a99a-dabe2b8597bd/payment -> 402 {"status":402,"code":"PAYMENT_DECLINED"}
+  │   PASS  pay → 402 (= 402)
+  │   PASS  error code (= PAYMENT_DECLINED)
+  │   (chaos on payment: failureRate=0 latencyMs=0 mode=DECLINE)
+  │ GET 5102/api/v1/bookings/01a19220-80a1-70d3-a99a-dabe2b8597bd -> 200 {"status":"FAILED","id":"01a19220-80a1-70d3-a99a-dabe2b8597bd"}
+  │   PASS  booking status (= FAILED)
+  │ GET 5101/api/v1/slots/01a19220-8084-7747-b2ad-6f1c246fb3df -> 200 {"id":"01a19220-8084-7747-b2ad-6f1c246fb3df"}
+  │   PASS  slot capacity restored (= 0)
+  │ GET 5103/api/v1/payments?bookingId=01a19220-80a1-70d3-a99a-dabe2b8597bd -> 200 
+  │   PASS  declined payment recorded (= FAILED)
+  │ 
+  │ == 3. Failure path: payment gateway down → 503, booking stays HELD; retry with the same key succeeds once ==
+  │ POST 5102/api/v1/bookings -> 201 {"status":"HELD","id":"01a19220-81c0-75ac-b353-0c037eeb6bc2"}
+  │   (chaos on payment: failureRate=1 latencyMs=0 mode=ERROR)
+  │ POST 5102/api/v1/bookings/01a19220-81c0-75ac-b353-0c037eeb6bc2/payment -> 503 {"status":503,"code":"DOWNSTREAM_CIRCUIT_OPEN"}
+  │   PASS  pay while gateway down → 503 (after retries) (= 503)
+  │ GET 5102/api/v1/bookings/01a19220-81c0-75ac-b353-0c037eeb6bc2 -> 200 {"status":"HELD","id":"01a19220-81c0-75ac-b353-0c037eeb6bc2"}
+  │   PASS  booking still HELD (= HELD)
+  │   (chaos on payment: failureRate=0 latencyMs=0 mode=DECLINE)
+  │ POST 5102/api/v1/bookings/01a19220-81c0-75ac-b353-0c037eeb6bc2/payment -> 503 {"status":503,"code":"DOWNSTREAM_CIRCUIT_OPEN"}
+  │   PASS  immediately after recovery the circuit is still open (= DOWNSTREAM_CIRCUIT_OPEN)
+  │   waiting 16 s for the circuit breaker to half-open...
+  │ POST 5102/api/v1/bookings/01a19220-81c0-75ac-b353-0c037eeb6bc2/payment -> 200 {"status":"CONFIRMED","id":"01a19220-81c0-75ac-b353-0c037eeb6bc2"}
+  │   PASS  retry same key after recovery → 200 (= 200)
+  │   PASS  booking status (= CONFIRMED)
+  │ GET 5103/api/v1/payments?bookingId=01a19220-81c0-75ac-b353-0c037eeb6bc2 -> 200 
+  │   PASS  exactly one successful charge (= 1)
+  │ 
+  │ Checks passed: 26, failed: 0
+  │ Finished: 2026-10-31T13:23:03Z
+  │ Saved to: evidence/tests/run-20261031T132244Z.txt
+  │ RESULT: PASS
+  PASS  e2e-booking.sh (happy path, declined payment, gateway down) (= PASS)
+
+Checks passed: 15, failed: 0
+Finished: 2026-10-31T13:23:03Z
+Saved to: evidence/a2-task2-compose/run-20261031T132240Z.txt
+RESULT: PASS

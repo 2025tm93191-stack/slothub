@@ -1,0 +1,55 @@
+# Non-secret configuration per service (the same environment variables Docker Compose sets).
+# Passwords are injected from the slothub-db Secret in each Deployment.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scheduling-config
+  namespace: slothub
+  labels: { app.kubernetes.io/part-of: slothub }
+data:
+  DB_MIGRATE_ON_STARTUP: "false"        # migrations run once in the migrate-scheduling Job
+  HOLD_TTL_SECONDS: "30"
+  HOLD_SWEEP_INTERVAL_SECONDS: "5"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: booking-config
+  namespace: slothub
+  labels: { app.kubernetes.io/part-of: slothub }
+data:
+  DB_MIGRATE_ON_STARTUP: "false"
+  # Kubernetes Service DNS names: requests are load-balanced across the replicas behind each Service
+  Services__Scheduling__BaseUrl: http://scheduling:8080
+  Services__Payment__BaseUrl: http://payment:8080
+  Services__Notification__BaseUrl: http://notification:8080
+  HTTP_ATTEMPT_TIMEOUT_SECONDS: "2"
+  HTTP_MAX_RETRIES: "3"
+  HTTP_TOTAL_TIMEOUT_SECONDS: "20"
+  HOLD_SAFETY_MARGIN_SECONDS: "3"
+  HOLD_SWEEP_INTERVAL_SECONDS: "5"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: payment-config
+  namespace: slothub
+  labels: { app.kubernetes.io/part-of: slothub }
+data:
+  DB_MIGRATE_ON_STARTUP: "false"
+  CHAOS_FAILURE_RATE: "0"
+  CHAOS_LATENCY_MS: "0"
+  CHAOS_FAILURE_MODE: DECLINE
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: notification-config
+  namespace: slothub
+  labels: { app.kubernetes.io/part-of: slothub }
+data:
+  DB_MIGRATE_ON_STARTUP: "false"
+  NOTIFY_MAX_ATTEMPTS: "5"
+  CHAOS_FAILURE_RATE: "0"
+  CHAOS_LATENCY_MS: "0"
+  CHAOS_FAILURE_MODE: ERROR

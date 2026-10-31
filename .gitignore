@@ -489,3 +489,7 @@ $RECYCLE.BIN/
 .DS_Store
 Assignment1_Microservices_Design_and_Development.docx
 CLAUDE.md
+
+# Raw service logs are part of the assignment evidence
+!evidence/logs/
+!evidence/logs/*.log

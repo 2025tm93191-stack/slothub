@@ -1,0 +1,1251 @@
+{
+  "info": {
+    "_postman_id": "56075e26-0f1f-599c-8cc8-329cfe708883",
+    "name": "SlotHub",
+    "description": "SlotHub microservices \u2014 run top to bottom (Runner or newman). Each folder is self-contained after folder 1.\nStart the stack first: docker compose up -d --build --wait",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "0. Health",
+      "item": [
+        {
+          "name": "Scheduling ready",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{schedulingUrl}}/health/ready",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"status is HEALTHY\", () => pm.expect(pm.response.json().status).to.eql(\"HEALTHY\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Booking ready",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{bookingUrl}}/health/ready",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"status is HEALTHY\", () => pm.expect(pm.response.json().status).to.eql(\"HEALTHY\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Payment ready",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{paymentUrl}}/health/ready",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"status is HEALTHY\", () => pm.expect(pm.response.json().status).to.eql(\"HEALTHY\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Notification ready",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{notificationUrl}}/health/ready",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"status is HEALTHY\", () => pm.expect(pm.response.json().status).to.eql(\"HEALTHY\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1. Setup catalog and slots (Scheduling)",
+      "item": [
+        {
+          "name": "Create tenant",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{schedulingUrl}}/api/v1/tenants",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Sunrise Dental {{$randomInt}}\",\n  \"timeZone\": \"Asia/Kolkata\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"tenantId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create resource",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{schedulingUrl}}/api/v1/tenants/{{tenantId}}/resources",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Dr. Mehta\",\n  \"type\": \"person\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"resourceId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create offering",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{schedulingUrl}}/api/v1/tenants/{{tenantId}}/offerings",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Teeth cleaning\",\n  \"durationMinutes\": 30,\n  \"priceMinor\": 50000,\n  \"currency\": \"INR\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"offeringId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create slots (capacity 1)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{schedulingUrl}}/api/v1/slots",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceId\": \"{{resourceId}}\",\n  \"offeringId\": \"{{offeringId}}\",\n  \"slots\": [\n    {\n      \"startAt\": \"{{slotStart1}}\",\n      \"capacity\": 1\n    },\n    {\n      \"startAt\": \"{{slotStart2}}\",\n      \"capacity\": 1\n    },\n    {\n      \"startAt\": \"{{slotStart3}}\",\n      \"capacity\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// three back-to-back slots starting tomorrow on the hour",
+                  "const start = new Date(Date.now() + 24 * 3600 * 1000); start.setUTCMinutes(0, 0, 0);",
+                  "[1, 2, 3].forEach(i => pm.collectionVariables.set('slotStart' + i, new Date(start.getTime() + (i - 1) * 1800 * 1000).toISOString()));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"slotId\", pm.response.json()[0].id);",
+                  "pm.collectionVariables.set(\"slotId2\", pm.response.json()[1].id);",
+                  "pm.collectionVariables.set(\"slotId3\", pm.response.json()[2].id);",
+                  "pm.test(\"3 slots created\", () => pm.expect(pm.response.json()).to.have.length(3));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search available slots",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{schedulingUrl}}/api/v1/slots?tenantId={{tenantId}}&available=true",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"3 available\", () => pm.expect(pm.response.json().total).to.eql(3));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Overlapping slot is rejected (409 SLOT_OVERLAP)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{schedulingUrl}}/api/v1/slots",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceId\": \"{{resourceId}}\",\n  \"offeringId\": \"{{offeringId}}\",\n  \"slots\": [\n    {\n      \"startAt\": \"{{slotStart1}}\",\n      \"capacity\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"code is SLOT_OVERLAP\", () => pm.expect(pm.response.json().code).to.eql(\"SLOT_OVERLAP\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Validation error (400 with field errors)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{schedulingUrl}}/api/v1/tenants",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"\",\n  \"timeZone\": \"Mars/Base\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code is VALIDATION_FAILED\", () => pm.expect(pm.response.json().code).to.eql(\"VALIDATION_FAILED\"));",
+                  "pm.test(\"field errors listed\", () => pm.expect(pm.response.json().errors).to.have.keys(\"Name\", \"TimeZone\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Main flow: hold \u2192 pay \u2192 confirm \u2192 notify \u2192 cancel",
+      "item": [
+        {
+          "name": "Create booking (hold slot)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{createKey}}"
+              }
+            ],
+            "url": "{{bookingUrl}}/api/v1/bookings",
+            "description": "Step 1. Requires Idempotency-Key. The slot is held until holdExpiresAt (HOLD_TTL_SECONDS).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"slotId\": \"{{slotId}}\",\n  \"customer\": {\n    \"id\": \"postman-customer\",\n    \"phone\": \"+919800000001\",\n    \"email\": \"priya@example.com\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"createKey\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"status is HELD\", () => pm.expect(pm.response.json().status).to.eql(\"HELD\"));",
+                  "pm.collectionVariables.set(\"bookingId\", pm.response.json().id);",
+                  "pm.collectionVariables.set(\"holdId\", pm.response.json().holdId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Repeat create with SAME key \u2192 replayed (BR4)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{createKey}}"
+              }
+            ],
+            "url": "{{bookingUrl}}/api/v1/bookings",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"slotId\": \"{{slotId}}\",\n  \"customer\": {\n    \"id\": \"postman-customer\",\n    \"phone\": \"+919800000001\",\n    \"email\": \"priya@example.com\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"replayed header\", () => pm.expect(pm.response.headers.get(\"Idempotency-Replayed\")).to.eql(\"true\"));",
+                  "pm.test(\"same booking id\", () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get(\"bookingId\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Same key, different body \u2192 422 (BR4)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{createKey}}"
+              }
+            ],
+            "url": "{{bookingUrl}}/api/v1/bookings",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"slotId\": \"{{slotId}}\",\n  \"customer\": {\n    \"id\": \"someone-else\",\n    \"phone\": \"+919800000002\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 422\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"code is IDEMPOTENCY_KEY_MISMATCH\", () => pm.expect(pm.response.json().code).to.eql(\"IDEMPOTENCY_KEY_MISMATCH\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Missing Idempotency-Key \u2192 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{bookingUrl}}/api/v1/bookings",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"slotId\": \"{{slotId}}\",\n  \"customer\": {\n    \"id\": \"postman-customer\",\n    \"phone\": \"+919800000001\",\n    \"email\": \"priya@example.com\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code is IDEMPOTENCY_KEY_REQUIRED\", () => pm.expect(pm.response.json().code).to.eql(\"IDEMPOTENCY_KEY_REQUIRED\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Slot is now full for another customer \u2192 409 (BR1)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": "{{bookingUrl}}/api/v1/bookings",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"slotId\": \"{{slotId}}\",\n  \"customer\": {\n    \"id\": \"late-customer\",\n    \"phone\": \"+919800000003\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"code is SLOT_UNAVAILABLE\", () => pm.expect(pm.response.json().code).to.eql(\"SLOT_UNAVAILABLE\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pay and confirm (BR3)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": "{{bookingUrl}}/api/v1/bookings/{{bookingId}}/payment",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"status is CONFIRMED\", () => pm.expect(pm.response.json().status).to.eql(\"CONFIRMED\"));",
+                  "pm.collectionVariables.set(\"paymentId\", pm.response.json().paymentId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get booking with history",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{bookingUrl}}/api/v1/bookings/{{bookingId}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"status is CONFIRMED\", () => pm.expect(pm.response.json().status).to.eql(\"CONFIRMED\"));",
+                  "pm.test(\"history PENDING\u2192HELD\u2192CONFIRMED\", () => pm.expect(pm.response.json().history.map(h => h.to)).to.eql([\"PENDING\", \"HELD\", \"CONFIRMED\"]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Hold is CONFIRMED in Scheduling",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{schedulingUrl}}/api/v1/holds/{{holdId}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"status is CONFIRMED\", () => pm.expect(pm.response.json().status).to.eql(\"CONFIRMED\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "One successful payment in Payment",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{paymentUrl}}/api/v1/payments?bookingId={{bookingId}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"exactly one payment\", () => pm.expect(pm.response.json()).to.have.length(1));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Notifications for the booking",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{notificationUrl}}/api/v1/notifications?bookingId={{bookingId}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// the outbox delivers within a few seconds",
+                  "setTimeout(() => {}, 4000);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"confirmation queued\", () => pm.expect(pm.response.json().items.map(i => i.eventType)).to.include(\"BOOKING_CONFIRMED\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cancel \u2192 refund per BR5",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": "{{bookingUrl}}/api/v1/bookings/{{bookingId}}/cancel",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"status is CANCELLED\", () => pm.expect(pm.response.json().status).to.eql(\"CANCELLED\"));",
+                  "pm.test(\"refund > 0\", () => pm.expect(pm.response.json().refundedMinor).to.be.above(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Slot capacity returned after cancel",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{schedulingUrl}}/api/v1/slots/{{slotId}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"reserved is 0\", () => pm.expect(pm.response.json().reserved).to.eql(0));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Failure cases",
+      "item": [
+        {
+          "name": "Create booking on slot 2",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": "{{bookingUrl}}/api/v1/bookings",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"slotId\": \"{{slotId2}}\",\n  \"customer\": {\n    \"id\": \"postman-customer\",\n    \"phone\": \"+919800000001\",\n    \"email\": \"priya@example.com\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"bookingId2\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Payment gateway: decline everything",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{paymentUrl}}/api/v1/admin/chaos",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"failureRate\": 1,\n  \"latencyMs\": 0,\n  \"mode\": \"DECLINE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pay \u2192 402 PAYMENT_DECLINED, slot released",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": "{{bookingUrl}}/api/v1/bookings/{{bookingId2}}/payment",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 402\", () => pm.response.to.have.status(402));",
+                  "pm.test(\"code is PAYMENT_DECLINED\", () => pm.expect(pm.response.json().code).to.eql(\"PAYMENT_DECLINED\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Payment gateway: back to normal",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{paymentUrl}}/api/v1/admin/chaos",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"failureRate\": 0,\n  \"latencyMs\": 0,\n  \"mode\": \"DECLINE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Booking is FAILED",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{bookingUrl}}/api/v1/bookings/{{bookingId2}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"status is FAILED\", () => pm.expect(pm.response.json().status).to.eql(\"FAILED\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Slot 2 capacity returned",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{schedulingUrl}}/api/v1/slots/{{slotId2}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"reserved is 0\", () => pm.expect(pm.response.json().reserved).to.eql(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown booking \u2192 404",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{bookingUrl}}/api/v1/bookings/00000000-0000-0000-0000-000000000001",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"code is BOOKING_NOT_FOUND\", () => pm.expect(pm.response.json().code).to.eql(\"BOOKING_NOT_FOUND\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cancel an already failed booking \u2192 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": "{{bookingUrl}}/api/v1/bookings/{{bookingId2}}/cancel",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"code is INVALID_STATE_TRANSITION\", () => pm.expect(pm.response.json().code).to.eql(\"INVALID_STATE_TRANSITION\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Payment and Notification directly",
+      "item": [
+        {
+          "name": "Charge",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": "{{paymentUrl}}/api/v1/payments",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookingId\": \"{{$guid}}\",\n  \"amountMinor\": 50000,\n  \"currency\": \"INR\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"status is SUCCEEDED\", () => pm.expect(pm.response.json().status).to.eql(\"SUCCEEDED\"));",
+                  "pm.collectionVariables.set(\"directPaymentId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Partial refund",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": "{{paymentUrl}}/api/v1/payments/{{directPaymentId}}/refunds",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amountMinor\": 20000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"payment.status is PARTIALLY_REFUNDED\", () => pm.expect(pm.response.json().payment.status).to.eql(\"PARTIALLY_REFUNDED\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refund more than remaining \u2192 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": "{{paymentUrl}}/api/v1/payments/{{directPaymentId}}/refunds",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amountMinor\": 40000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"code is REFUND_EXCEEDS_PAYMENT\", () => pm.expect(pm.response.json().code).to.eql(\"REFUND_EXCEEDS_PAYMENT\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Send notification",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{notificationUrl}}/api/v1/notifications",
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookingId\": \"{{$guid}}\",\n  \"eventType\": \"PAYMENT_FAILED\",\n  \"channel\": \"SMS\",\n  \"recipient\": \"+919800000001\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 202\", () => pm.response.to.have.status(202));",
+                  "pm.test(\"status is PENDING\", () => pm.expect(pm.response.json().status).to.eql(\"PENDING\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get chaos settings (Payment)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{paymentUrl}}/api/v1/admin/chaos",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Admin (Challenge 3B)",
+      "item": [
+        {
+          "name": "Run hold-expiry sweep now",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{schedulingUrl}}/api/v1/admin/holds/expire-now",
+            "description": "Expires HELD holds past their TTL. Running it twice is safe."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Run it again (safe: expires nothing new)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{schedulingUrl}}/api/v1/admin/holds/expire-now",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.request.headers.upsert({ key: 'X-Correlation-Id', value: 'postman-' + pm.variables.replaceIn('{{$guid}}').slice(0, 8) });"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "tenantId",
+      "value": ""
+    },
+    {
+      "key": "resourceId",
+      "value": ""
+    },
+    {
+      "key": "offeringId",
+      "value": ""
+    },
+    {
+      "key": "slotId",
+      "value": ""
+    },
+    {
+      "key": "slotId2",
+      "value": ""
+    },
+    {
+      "key": "slotId3",
+      "value": ""
+    },
+    {
+      "key": "slotStart1",
+      "value": ""
+    },
+    {
+      "key": "slotStart2",
+      "value": ""
+    },
+    {
+      "key": "slotStart3",
+      "value": ""
+    },
+    {
+      "key": "createKey",
+      "value": ""
+    },
+    {
+      "key": "bookingId",
+      "value": ""
+    },
+    {
+      "key": "bookingId2",
+      "value": ""
+    },
+    {
+      "key": "holdId",
+      "value": ""
+    },
+    {
+      "key": "paymentId",
+      "value": ""
+    },
+    {
+      "key": "directPaymentId",
+      "value": ""
+    }
+  ]
+}

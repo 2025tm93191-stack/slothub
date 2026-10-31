@@ -493,3 +493,6 @@ CLAUDE.md
 # Raw service logs are part of the assignment evidence
 !evidence/logs/
 !evidence/logs/*.log
+
+# Assignment briefs (course documents)
+Assignment_2_Containerization_and_Deployment.docx

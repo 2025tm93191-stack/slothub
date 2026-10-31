@@ -16,6 +16,9 @@ public sealed class OutboxMessage
 
     public string Payload { get; set; } = null!;
 
+    /// <summary>Correlation ID of the request that caused the message, forwarded so the delivery can be traced end to end.</summary>
+    public string? CorrelationId { get; set; }
+
     public int Attempts { get; set; }
 
     public string? LastError { get; set; }
@@ -74,6 +77,7 @@ public sealed class BookingDbContext(DbContextOptions<BookingDbContext> options)
             e.Property(x => x.Type).HasMaxLength(64);
             e.Property(x => x.Payload).HasColumnType("jsonb");
             e.Property(x => x.LastError).HasMaxLength(500);
+            e.Property(x => x.CorrelationId).HasMaxLength(100);
             e.HasIndex(x => new { x.ProcessedAt, x.NextAttemptAt });
         });
 

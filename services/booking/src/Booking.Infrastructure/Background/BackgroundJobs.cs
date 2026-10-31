@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using Booking.Domain.Bookings;
 using Booking.Infrastructure.Persistence;
+using BuildingBlocks.Correlation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -62,8 +63,16 @@ internal sealed class OutboxDispatcher(
         {
             try
             {
-                using var content = new StringContent(message.Payload, System.Text.Encoding.UTF8, "application/json");
-                using var response = await http.PostAsync("api/v1/notifications", content, ct);
+                using var request = new HttpRequestMessage(HttpMethod.Post, "api/v1/notifications")
+                {
+                    Content = new StringContent(message.Payload, System.Text.Encoding.UTF8, "application/json"),
+                };
+                if (message.CorrelationId is not null)
+                {
+                    request.Headers.Add(CorrelationId.HeaderName, message.CorrelationId);
+                }
+
+                using var response = await http.SendAsync(request, ct);
                 response.EnsureSuccessStatusCode();
                 message.ProcessedAt = clock.GetUtcNow();
                 logger.LogInformation("Outbox message {MessageId} ({Type}) delivered to Notification", message.Id, message.Type);

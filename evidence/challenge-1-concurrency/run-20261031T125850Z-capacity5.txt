@@ -1,0 +1,62 @@
+== Challenge 1: concurrency control (BR1) ==
+Run:        c1-20261031T125850Z
+Started:    2026-10-31T12:58:50Z
+Command:    scripts/challenge1-concurrency.sh --capacity 5 --requests 30
+Target:     POST http://localhost:5101/api/v1/holds
+
+Seeded slot 01a1920a-98e5-7cfd-8760-eb265885ddd5 with capacity 5
+
+Releasing 30 requests simultaneously at 12:58:51...
+
+#    HTTP   time(s)   result
+1    409    0.010773  SLOT_UNAVAILABLE
+2    409    0.002380  SLOT_UNAVAILABLE
+3    409    0.003360  SLOT_UNAVAILABLE
+4    409    0.006690  SLOT_UNAVAILABLE
+5    409    0.007368  SLOT_UNAVAILABLE
+6    409    0.005649  SLOT_UNAVAILABLE
+7    409    0.012982  SLOT_UNAVAILABLE
+8    409    0.005771  SLOT_UNAVAILABLE
+9    409    0.023738  SLOT_UNAVAILABLE
+10   409    0.006487  SLOT_UNAVAILABLE
+11   409    0.008409  SLOT_UNAVAILABLE
+12   409    0.021405  SLOT_UNAVAILABLE
+13   409    0.006075  SLOT_UNAVAILABLE
+14   409    0.013130  SLOT_UNAVAILABLE
+15   409    0.007126  SLOT_UNAVAILABLE
+16   201    0.012995  HELD hold=01a1920a-9d2f-7d70-9712-3c2ecdf64a87
+17   409    0.019953  SLOT_UNAVAILABLE
+18   409    0.016284  SLOT_UNAVAILABLE
+19   201    0.008089  HELD hold=01a1920a-9d3f-7900-998c-596f2cf311e7
+20   409    0.006436  SLOT_UNAVAILABLE
+21   409    0.015175  SLOT_UNAVAILABLE
+22   201    0.019194  HELD hold=01a1920a-9d31-7bea-9513-47c81523d9a2
+23   201    0.016601  HELD hold=01a1920a-9d2f-7c8f-92d3-83ea7463d183
+24   409    0.012615  SLOT_UNAVAILABLE
+25   409    0.007405  SLOT_UNAVAILABLE
+26   409    0.014428  SLOT_UNAVAILABLE
+27   409    0.015382  SLOT_UNAVAILABLE
+28   201    0.010534  HELD hold=01a1920a-9d2f-7512-b022-e2355504d3c3
+29   409    0.010265  SLOT_UNAVAILABLE
+30   409    0.010013  SLOT_UNAVAILABLE
+
+== Summary ==
+201 Created (held):            5   (expected 5)
+409 Conflict:                  25   (expected 25, all SLOT_UNAVAILABLE: 25)
+Slot via API:                  {"capacity":5,"reserved":5,"remaining":0}
+
+== Database state (scheduling_db) ==
+                  id                  | capacity | reserved_count | version 
+--------------------------------------+----------+----------------+---------
+ 01a1920a-98e5-7cfd-8760-eb265885ddd5 |        5 |              5 |       5
+(1 row)
+
+ status | count 
+--------+-------
+ HELD   |     5
+(1 row)
+
+
+RESULT: PASS — exactly 5 of 30 concurrent requests succeeded; no over-allocation.
+Finished:   2026-10-31T12:58:51Z
+Saved to:   evidence/challenge-1-concurrency/run-20261031T125850Z-capacity5.txt

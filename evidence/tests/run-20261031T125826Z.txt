@@ -1,0 +1,72 @@
+Run:      e2e-20261031T125826Z
+Started:  2026-10-31T12:58:26Z
+Command:  scripts/e2e-booking.sh
+
+
+== 0. All services healthy ==
+GET 5101/health/ready -> 200 {"status":"HEALTHY"}
+  PASS  Scheduling ready (= HEALTHY)
+GET 5102/health/ready -> 200 {"status":"HEALTHY"}
+  PASS  Booking ready (= HEALTHY)
+GET 5103/health/ready -> 200 {"status":"HEALTHY"}
+  PASS  Payment ready (= HEALTHY)
+GET 5104/health/ready -> 200 {"status":"HEALTHY"}
+  PASS  Notification ready (= HEALTHY)
+
+== 1. Happy path: hold → pay → confirm → notify ==
+POST 5102/api/v1/bookings -> 201 {"status":"HELD","id":"01a1920a-3e0e-7bc5-878f-1f0c153c8917"}
+  PASS  create booking → 201 (= 201)
+  PASS  booking status (= HELD)
+POST 5102/api/v1/bookings/01a1920a-3e0e-7bc5-878f-1f0c153c8917/payment -> 200 {"status":"CONFIRMED","id":"01a1920a-3e0e-7bc5-878f-1f0c153c8917"}
+  PASS  pay → 200 (= 200)
+  PASS  booking status (= CONFIRMED)
+  PASS  amount charged (= 50000)
+GET 5101/api/v1/holds/01a1920a-3e81-723d-bc44-297bc50d3cc0 -> 200 {"status":"CONFIRMED","id":"01a1920a-3e81-723d-bc44-297bc50d3cc0"}
+  PASS  hold status in Scheduling (= CONFIRMED)
+GET 5101/api/v1/slots/01a1920a-3db6-7d8f-9fef-8ce4d9d5b800 -> 200 {"id":"01a1920a-3db6-7d8f-9fef-8ce4d9d5b800"}
+  PASS  slot reserved (= 1)
+GET 5103/api/v1/payments?bookingId=01a1920a-3e0e-7bc5-878f-1f0c153c8917 -> 200 
+  PASS  payments for booking (= 1)
+  PASS  payment status (= SUCCEEDED)
+  ... confirmation SMS + email sent after 3s
+GET 5104/api/v1/notifications?bookingId=01a1920a-3e0e-7bc5-878f-1f0c153c8917 -> 200 {}
+  PASS  BOOKING_CONFIRMED notifications sent (SMS + EMAIL) (= 2)
+  message: Your booking 01a1920a-3e0e-7bc5-878f-1f0c153c8917 on 2026-11-01 12:00 UTC is confirmed. Amount paid: INR 500.00.
+
+== 2. Failure path: payment declined → booking FAILED, slot released ==
+POST 5102/api/v1/bookings -> 201 {"status":"HELD","id":"01a1920a-4dff-7e77-aaeb-08c0bee1fab6"}
+GET 5101/api/v1/slots/01a1920a-4de4-7910-8da5-c3eb9b1ce233 -> 200 {"id":"01a1920a-4de4-7910-8da5-c3eb9b1ce233"}
+  PASS  slot reserved while HELD (= 1)
+  (chaos on payment: failureRate=1 latencyMs=0 mode=DECLINE)
+POST 5102/api/v1/bookings/01a1920a-4dff-7e77-aaeb-08c0bee1fab6/payment -> 402 {"status":402,"code":"PAYMENT_DECLINED"}
+  PASS  pay → 402 (= 402)
+  PASS  error code (= PAYMENT_DECLINED)
+  (chaos on payment: failureRate=0 latencyMs=0 mode=DECLINE)
+GET 5102/api/v1/bookings/01a1920a-4dff-7e77-aaeb-08c0bee1fab6 -> 200 {"status":"FAILED","id":"01a1920a-4dff-7e77-aaeb-08c0bee1fab6"}
+  PASS  booking status (= FAILED)
+GET 5101/api/v1/slots/01a1920a-4de4-7910-8da5-c3eb9b1ce233 -> 200 {"id":"01a1920a-4de4-7910-8da5-c3eb9b1ce233"}
+  PASS  slot capacity restored (= 0)
+GET 5103/api/v1/payments?bookingId=01a1920a-4dff-7e77-aaeb-08c0bee1fab6 -> 200 
+  PASS  declined payment recorded (= FAILED)
+
+== 3. Failure path: payment gateway down → 503, booking stays HELD; retry with the same key succeeds once ==
+POST 5102/api/v1/bookings -> 201 {"status":"HELD","id":"01a1920a-4f0f-7cdd-96b7-72a88ad4bcda"}
+  (chaos on payment: failureRate=1 latencyMs=0 mode=ERROR)
+POST 5102/api/v1/bookings/01a1920a-4f0f-7cdd-96b7-72a88ad4bcda/payment -> 503 {"status":503,"code":"DOWNSTREAM_CIRCUIT_OPEN"}
+  PASS  pay while gateway down → 503 (after retries) (= 503)
+GET 5102/api/v1/bookings/01a1920a-4f0f-7cdd-96b7-72a88ad4bcda -> 200 {"status":"HELD","id":"01a1920a-4f0f-7cdd-96b7-72a88ad4bcda"}
+  PASS  booking still HELD (= HELD)
+  (chaos on payment: failureRate=0 latencyMs=0 mode=DECLINE)
+POST 5102/api/v1/bookings/01a1920a-4f0f-7cdd-96b7-72a88ad4bcda/payment -> 503 {"status":503,"code":"DOWNSTREAM_CIRCUIT_OPEN"}
+  PASS  immediately after recovery the circuit is still open (= DOWNSTREAM_CIRCUIT_OPEN)
+  waiting 16 s for the circuit breaker to half-open...
+POST 5102/api/v1/bookings/01a1920a-4f0f-7cdd-96b7-72a88ad4bcda/payment -> 200 {"status":"CONFIRMED","id":"01a1920a-4f0f-7cdd-96b7-72a88ad4bcda"}
+  PASS  retry same key after recovery → 200 (= 200)
+  PASS  booking status (= CONFIRMED)
+GET 5103/api/v1/payments?bookingId=01a1920a-4f0f-7cdd-96b7-72a88ad4bcda -> 200 
+  PASS  exactly one successful charge (= 1)
+
+Checks passed: 26, failed: 0
+Finished: 2026-10-31T12:58:49Z
+Saved to: evidence/tests/run-20261031T125826Z.txt
+RESULT: PASS

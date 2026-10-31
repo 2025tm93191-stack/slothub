@@ -38,7 +38,8 @@ api POST "$BOOKING_URL/api/v1/bookings/$c_booking/payment" "" "$(uuid)"
 echo "  C (paid at once): booking $c_booking → $(field .status)"
 new_booking d; d_booking=$BOOKING d_hold=$HOLD d_slot=$SLOT
 new_booking e; e_booking=$BOOKING e_hold=$HOLD e_slot=$SLOT
-e_expiry_epoch=$(date -u -d "$(field .holdExpiresAt)" +%s)
+# Portable (macOS + Linux): jq parses the ISO timestamp; GNU-only `date -d` fails on macOS.
+e_expiry_epoch=$(field '.holdExpiresAt | sub("\\.[0-9]+"; "") | sub("\\+00:00$"; "Z") | fromdateiso8601')
 echo "  E (pays late):    booking $e_booking"
 
 section "D. Cancellation releases the hold immediately"

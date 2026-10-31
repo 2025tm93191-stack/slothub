@@ -1,0 +1,138 @@
+Run:      c2-20261031T125855Z
+Started:  2026-10-31T12:58:55Z
+Command:  scripts/challenge2-idempotency.sh --parallel 10
+
+Seeded slot 01a1920a-ac1e-7f3e-ab3d-f5e677729e17 (capacity 5, price 50000)
+
+== A. Sequential repeat: same key, same body ==
+POST 5102/api/v1/bookings -> 201 {"status":"HELD","id":"01a1920a-ac37-7c6e-8d27-c11824f159de"}
+POST 5102/api/v1/bookings -> 201 (replayed) {"status":"HELD","id":"01a1920a-ac37-7c6e-8d27-c11824f159de"}
+POST 5102/api/v1/bookings -> 201 (replayed) {"status":"HELD","id":"01a1920a-ac37-7c6e-8d27-c11824f159de"}
+  PASS  first call → 201 (= 201)
+  PASS  repeat → same status (= 201)
+  PASS  repeat marked Idempotency-Replayed (= true)
+  PASS  repeat body identical to first (sha256 prefix) (= ce0ded64cc8655e4)
+  PASS  third body identical to first (sha256 prefix) (= ce0ded64cc8655e4)
+  first response: {"id":"01a1920a-ac37-7c6e-8d27-c11824f159de","status":"HELD","holdId":"01a1920a-ac39-7cd7-b4b2-8ac397d0a88e","amountMinor":50000}
+  PASS  booking rows for customer cust-a-c2-20261031T125855Z (= 1)
+
+== B. Same key, different body ==
+POST 5102/api/v1/bookings -> 422 {"status":422,"code":"IDEMPOTENCY_KEY_MISMATCH"}
+  PASS  different payload → 422 (= 422)
+  PASS  error code (= IDEMPOTENCY_KEY_MISMATCH)
+  PASS  no extra booking created (= 0)
+
+== C. Missing Idempotency-Key ==
+POST 5102/api/v1/bookings -> 400 {"status":400,"code":"IDEMPOTENCY_KEY_REQUIRED"}
+  PASS  no key → 400 (= 400)
+  PASS  error code (= IDEMPOTENCY_KEY_REQUIRED)
+
+== D. 10 identical POST /bookings at the same instant ==
+  #    HTTP   replayed  result
+  1    409    no        {"status":409,"code":"REQUEST_IN_PROGRESS"}
+  2    409    no        {"status":409,"code":"REQUEST_IN_PROGRESS"}
+  3    409    no        {"status":409,"code":"REQUEST_IN_PROGRESS"}
+  4    409    no        {"status":409,"code":"REQUEST_IN_PROGRESS"}
+  5    409    no        {"status":409,"code":"REQUEST_IN_PROGRESS"}
+  6    201    no        {"id":"01a1920a-b14a-7d99-99d0-8a09be635c4d","status":"HELD"}
+  7    409    no        {"status":409,"code":"REQUEST_IN_PROGRESS"}
+  8    409    no        {"status":409,"code":"REQUEST_IN_PROGRESS"}
+  9    409    no        {"status":409,"code":"REQUEST_IN_PROGRESS"}
+  10   409    no        {"status":409,"code":"REQUEST_IN_PROGRESS"}
+  201 (original or replay): 1, 409 REQUEST_IN_PROGRESS: 9
+  PASS  every response is 201 or 409 in-progress (= 10)
+  PASS  booking rows created (= 1)
+  PASS  holds in Scheduling for that booking (= 1)
+GET 5101/api/v1/slots/01a1920a-ac1e-7f3e-ab3d-f5e677729e17 -> 200 {"id":"01a1920a-ac1e-7f3e-ab3d-f5e677729e17"}
+  PASS  slot reserved (bookings A + D) (= 2)
+
+== E. 10 identical POST /bookings/{id}/payment at the same instant ==
+  #    HTTP   replayed  result
+  1    409    no        {"status":409,"code":"REQUEST_IN_PROGRESS"}
+  2    409    no        {"status":409,"code":"REQUEST_IN_PROGRESS"}
+  3    409    no        {"status":409,"code":"REQUEST_IN_PROGRESS"}
+  4    409    no        {"status":409,"code":"REQUEST_IN_PROGRESS"}
+  5    409    no        {"status":409,"code":"REQUEST_IN_PROGRESS"}
+  6    409    no        {"status":409,"code":"REQUEST_IN_PROGRESS"}
+  7    409    no        {"status":409,"code":"REQUEST_IN_PROGRESS"}
+  8    409    no        {"status":409,"code":"REQUEST_IN_PROGRESS"}
+  9    200    no        {"id":"01a1920a-b14a-7d99-99d0-8a09be635c4d","status":"CONFIRMED"}
+  10   409    no        {"status":409,"code":"REQUEST_IN_PROGRESS"}
+  200: 1, 409: 9
+GET 5102/api/v1/bookings/01a1920a-b14a-7d99-99d0-8a09be635c4d -> 200 {"status":"CONFIRMED","id":"01a1920a-b14a-7d99-99d0-8a09be635c4d"}
+  PASS  booking confirmed (= CONFIRMED)
+  PASS  payment rows for booking (payment_db) (= 1)
+  PASS  total charged (= 50000)
+POST 5102/api/v1/bookings/01a1920a-b14a-7d99-99d0-8a09be635c4d/payment -> 200 (replayed) {"status":"CONFIRMED","id":"01a1920a-b14a-7d99-99d0-8a09be635c4d"}
+  PASS  late repeat of the payment → replayed 200 (= 200 true)
+POST 5102/api/v1/bookings/01a1920a-b14a-7d99-99d0-8a09be635c4d/payment -> 200 {"status":"CONFIRMED","id":"01a1920a-b14a-7d99-99d0-8a09be635c4d"}
+  PASS  pay again with a NEW key → 200, still no second charge (= 200 1)
+
+== F. Evidence: database rows ==
+-- booking_db.idempotency_keys
+                    key                    |                               scope                                |   state   | response_status |          created_at           
+-------------------------------------------+--------------------------------------------------------------------+-----------+-----------------+-------------------------------
+ c2-a-e24faef6-4f86-41cf-80ea-8cd55d56f797 | POST /api/v1/bookings                                              | COMPLETED |             201 | 2026-10-31 12:58:55.414559+00
+ c2-d-19e7bbb7-b3d0-4ae8-ba0e-0ede84022c1e | POST /api/v1/bookings                                              | COMPLETED |             201 | 2026-10-31 12:58:56.709938+00
+ c2-e-a83cabd3-8772-4950-a151-c6e0639170e6 | POST /api/v1/bookings/01a1920a-b14a-7d99-99d0-8a09be635c4d/payment | COMPLETED |             200 | 2026-10-31 12:58:57.996814+00
+(3 rows)
+
+-- payment_db.idempotency_keys (Booking → Payment uses the derived key pay-{bookingId})
+                   key                    |         scope         |   state   | response_status 
+------------------------------------------+-----------------------+-----------+-----------------
+ pay-01a1920a-b14a-7d99-99d0-8a09be635c4d | POST /api/v1/payments | COMPLETED |             201
+(1 row)
+
+-- payment_db.payments
+                  id                  |              booking_id              | amount_minor |  status   |          created_at           
+--------------------------------------+--------------------------------------+--------------+-----------+-------------------------------
+ 01a1920a-b654-7d23-b233-9786e16eb5e0 | 01a1920a-b14a-7d99-99d0-8a09be635c4d |        50000 | SUCCEEDED | 2026-10-31 12:58:58.004814+00
+(1 row)
+
+-- booking_db.bookings
+                  id                  |        customer_id         |  status   |              payment_id              
+--------------------------------------+----------------------------+-----------+--------------------------------------
+ 01a1920a-ac37-7c6e-8d27-c11824f159de | cust-a-c2-20261031T125855Z | HELD      | 
+ 01a1920a-b14a-7d99-99d0-8a09be635c4d | cust-d-c2-20261031T125855Z | CONFIRMED | 01a1920a-b654-7d23-b233-9786e16eb5e0
+(2 rows)
+
+
+== F. Evidence: replay log lines ==
+-- slothub-booking
+12:58:55.420 c2-20261031T125855Z-1 Booking 01a1920a-ac37-7c6e-8d27-c11824f159de HELD with hold 01a1920a-ac39-7cd7-b4b2-8ac397d0a88e until 10/31/2026 12:59:25 +00:00
+12:58:55.421 c2-20261031T125855Z-1 Idempotency key "c2-a-e24faef6-4f86-41cf-80ea-8cd55d56f797" stored with 201 for "POST /api/v1/bookings"
+12:58:55.441 c2-20261031T125855Z-2 Idempotency replay for key "c2-a-e24faef6-4f86-41cf-80ea-8cd55d56f797" on "POST /api/v1/bookings": returning stored 201
+12:58:55.459 c2-20261031T125855Z-3 Idempotency replay for key "c2-a-e24faef6-4f86-41cf-80ea-8cd55d56f797" on "POST /api/v1/bookings": returning stored 201
+12:58:55.585 c2-20261031T125855Z-4 Idempotency key "c2-a-e24faef6-4f86-41cf-80ea-8cd55d56f797" reused with a different payload on "POST /api/v1/bookings"
+12:58:56.725 c2-20261031T125855Z-par-10 Idempotency key "c2-d-19e7bbb7-b3d0-4ae8-ba0e-0ede84022c1e" on "POST /api/v1/bookings" is still being processed
+12:58:56.728 c2-20261031T125855Z-par-2 Idempotency key "c2-d-19e7bbb7-b3d0-4ae8-ba0e-0ede84022c1e" on "POST /api/v1/bookings" is still being processed
+12:58:56.730 c2-20261031T125855Z-par-4 Idempotency key "c2-d-19e7bbb7-b3d0-4ae8-ba0e-0ede84022c1e" on "POST /api/v1/bookings" is still being processed
+12:58:56.730 c2-20261031T125855Z-par-1 Idempotency key "c2-d-19e7bbb7-b3d0-4ae8-ba0e-0ede84022c1e" on "POST /api/v1/bookings" is still being processed
+12:58:56.730 c2-20261031T125855Z-par-3 Idempotency key "c2-d-19e7bbb7-b3d0-4ae8-ba0e-0ede84022c1e" on "POST /api/v1/bookings" is still being processed
+12:58:56.730 c2-20261031T125855Z-par-5 Idempotency key "c2-d-19e7bbb7-b3d0-4ae8-ba0e-0ede84022c1e" on "POST /api/v1/bookings" is still being processed
+12:58:56.730 c2-20261031T125855Z-par-9 Idempotency key "c2-d-19e7bbb7-b3d0-4ae8-ba0e-0ede84022c1e" on "POST /api/v1/bookings" is still being processed
+12:58:56.731 c2-20261031T125855Z-par-8 Idempotency key "c2-d-19e7bbb7-b3d0-4ae8-ba0e-0ede84022c1e" on "POST /api/v1/bookings" is still being processed
+12:58:56.731 c2-20261031T125855Z-par-7 Idempotency key "c2-d-19e7bbb7-b3d0-4ae8-ba0e-0ede84022c1e" on "POST /api/v1/bookings" is still being processed
+12:58:56.736 c2-20261031T125855Z-par-6 Booking 01a1920a-b14a-7d99-99d0-8a09be635c4d HELD with hold 01a1920a-b159-722f-87cf-2424899cb03b until 10/31/2026 12:59:26 +00:00
+12:58:56.737 c2-20261031T125855Z-par-6 Idempotency key "c2-d-19e7bbb7-b3d0-4ae8-ba0e-0ede84022c1e" stored with 201 for "POST /api/v1/bookings"
+12:58:57.998 c2-20261031T125855Z-par-3 Idempotency key "c2-e-a83cabd3-8772-4950-a151-c6e0639170e6" on "POST /api/v1/bookings/01a1920a-b14a-7d99-99d0-8a09be635c4d/payment" is still being processed
+12:58:57.998 c2-20261031T125855Z-par-1 Idempotency key "c2-e-a83cabd3-8772-4950-a151-c6e0639170e6" on "POST /api/v1/bookings/01a1920a-b14a-7d99-99d0-8a09be635c4d/payment" is still being processed
+12:58:57.998 c2-20261031T125855Z-par-2 Idempotency key "c2-e-a83cabd3-8772-4950-a151-c6e0639170e6" on "POST /api/v1/bookings/01a1920a-b14a-7d99-99d0-8a09be635c4d/payment" is still being processed
+12:58:57.999 c2-20261031T125855Z-par-6 Idempotency key "c2-e-a83cabd3-8772-4950-a151-c6e0639170e6" on "POST /api/v1/bookings/01a1920a-b14a-7d99-99d0-8a09be635c4d/payment" is still being processed
+12:58:57.999 c2-20261031T125855Z-par-8 Idempotency key "c2-e-a83cabd3-8772-4950-a151-c6e0639170e6" on "POST /api/v1/bookings/01a1920a-b14a-7d99-99d0-8a09be635c4d/payment" is still being processed
+12:58:57.999 c2-20261031T125855Z-par-5 Idempotency key "c2-e-a83cabd3-8772-4950-a151-c6e0639170e6" on "POST /api/v1/bookings/01a1920a-b14a-7d99-99d0-8a09be635c4d/payment" is still being processed
+12:58:57.999 c2-20261031T125855Z-par-7 Idempotency key "c2-e-a83cabd3-8772-4950-a151-c6e0639170e6" on "POST /api/v1/bookings/01a1920a-b14a-7d99-99d0-8a09be635c4d/payment" is still being processed
+12:58:58.000 c2-20261031T125855Z-par-4 Idempotency key "c2-e-a83cabd3-8772-4950-a151-c6e0639170e6" on "POST /api/v1/bookings/01a1920a-b14a-7d99-99d0-8a09be635c4d/payment" is still being processed
+12:58:58.003 c2-20261031T125855Z-par-10 Idempotency key "c2-e-a83cabd3-8772-4950-a151-c6e0639170e6" on "POST /api/v1/bookings/01a1920a-b14a-7d99-99d0-8a09be635c4d/payment" is still being processed
+12:58:58.011 c2-20261031T125855Z-par-9 Booking 01a1920a-b14a-7d99-99d0-8a09be635c4d CONFIRMED with payment 01a1920a-b654-7d23-b233-9786e16eb5e0
+12:58:58.012 c2-20261031T125855Z-par-9 Idempotency key "c2-e-a83cabd3-8772-4950-a151-c6e0639170e6" stored with 200 for "POST /api/v1/bookings/01a1920a-b14a-7d99-99d0-8a09be635c4d/payment"
+12:58:58.191 c2-20261031T125855Z-8 Idempotency replay for key "c2-e-a83cabd3-8772-4950-a151-c6e0639170e6" on "POST /api/v1/bookings/01a1920a-b14a-7d99-99d0-8a09be635c4d/payment": returning stored 200
+12:58:58.215 c2-20261031T125855Z-9 Idempotency key "c2-e2-3727e8b2-0505-469f-bd29-1de24305f5c1" stored with 200 for "POST /api/v1/bookings/01a1920a-b14a-7d99-99d0-8a09be635c4d/payment"
+-- slothub-payment
+12:58:58.004 c2-20261031T125855Z-par-9 Gateway approved 50000 "INR" for booking 01a1920a-b14a-7d99-99d0-8a09be635c4d
+12:58:58.006 c2-20261031T125855Z-par-9 Idempotency key "pay-01a1920a-b14a-7d99-99d0-8a09be635c4d" stored with 201 for "POST /api/v1/payments"
+
+Checks passed: 20, failed: 0
+Finished: 2026-10-31T12:58:58Z
+Saved to: evidence/challenge-2-idempotency/run-20261031T125855Z.txt
+RESULT: PASS

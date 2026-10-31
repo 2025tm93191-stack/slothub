@@ -1,0 +1,214 @@
+newman
+
+SlotHub
+
+❏ 0. Health
+↳ Scheduling ready
+  GET http://localhost:5101/health/ready [200 OK, 383B, 18ms]
+  ✓  status 200
+  ✓  status is HEALTHY
+
+↳ Booking ready
+  GET http://localhost:5102/health/ready [200 OK, 380B, 8ms]
+  ✓  status 200
+  ✓  status is HEALTHY
+
+↳ Payment ready
+  GET http://localhost:5103/health/ready [200 OK, 380B, 9ms]
+  ✓  status 200
+  ✓  status is HEALTHY
+
+↳ Notification ready
+  GET http://localhost:5104/health/ready [200 OK, 385B, 7ms]
+  ✓  status 200
+  ✓  status is HEALTHY
+
+❏ 1. Setup catalog and slots (Scheduling)
+↳ Create tenant
+  POST http://localhost:5101/api/v1/tenants [201 Created, 399B, 5ms]
+  ✓  status 201
+
+↳ Create resource
+  POST http://localhost:5101/api/v1/tenants/01a1920b-56a5-7f4a-9c21-7f195d9046b6/resources [201 Created, 478B, 6ms]
+  ✓  status 201
+
+↳ Create offering
+  POST http://localhost:5101/api/v1/tenants/01a1920b-56a5-7f4a-9c21-7f195d9046b6/offerings [201 Created, 524B, 6ms]
+  ✓  status 201
+
+↳ Create slots (capacity 1)
+  POST http://localhost:5101/api/v1/slots [201 Created, 1.16kB, 13ms]
+  ✓  status 201
+  ✓  3 slots created
+
+↳ Search available slots
+  GET http://localhost:5101/api/v1/slots?tenantId=01a1920b-56a5-7f4a-9c21-7f195d9046b6&available=true [200 OK, 1.17kB, 50ms]
+  ✓  status 200
+  ✓  3 available
+
+↳ Overlapping slot is rejected (409 SLOT_OVERLAP)
+  POST http://localhost:5101/api/v1/slots [409 Conflict, 511B, 4ms]
+  ✓  status 409
+  ✓  code is SLOT_OVERLAP
+
+↳ Validation error (400 with field errors)
+  POST http://localhost:5101/api/v1/tenants [400 Bad Request, 568B, 11ms]
+  ✓  status 400
+  ✓  code is VALIDATION_FAILED
+  ✓  field errors listed
+
+❏ 2. Main flow: hold → pay → confirm → notify → cancel
+↳ Create booking (hold slot)
+  POST http://localhost:5102/api/v1/bookings [201 Created, 1.08kB, 11ms]
+  ✓  status 201
+  ✓  status is HELD
+
+↳ Repeat create with SAME key → replayed (BR4)
+  POST http://localhost:5102/api/v1/bookings [201 Created, 1.1kB, 3ms]
+  ✓  status 201
+  ✓  replayed header
+  ✓  same booking id
+
+↳ Same key, different body → 422 (BR4)
+  POST http://localhost:5102/api/v1/bookings [422 Unprocessable Entity, 521B, 2ms]
+  ✓  status 422
+  ✓  code is IDEMPOTENCY_KEY_MISMATCH
+
+↳ Missing Idempotency-Key → 400
+  POST http://localhost:5102/api/v1/bookings [400 Bad Request, 480B, 1ms]
+  ✓  status 400
+  ✓  code is IDEMPOTENCY_KEY_REQUIRED
+
+↳ Slot is now full for another customer → 409 (BR1)
+  POST http://localhost:5102/api/v1/bookings [409 Conflict, 489B, 13ms]
+  ✓  status 409
+  ✓  code is SLOT_UNAVAILABLE
+
+↳ Pay and confirm (BR3)
+  POST http://localhost:5102/api/v1/bookings/01a1920b-575a-791c-86b9-6d9a44b9e3aa/payment [200 OK, 1.18kB, 11ms]
+  ✓  status 200
+  ✓  status is CONFIRMED
+
+↳ Get booking with history
+  GET http://localhost:5102/api/v1/bookings/01a1920b-575a-791c-86b9-6d9a44b9e3aa [200 OK, 1.18kB, 2ms]
+  ✓  status 200
+  ✓  status is CONFIRMED
+  ✓  history PENDING→HELD→CONFIRMED
+
+↳ Hold is CONFIRMED in Scheduling
+  GET http://localhost:5101/api/v1/holds/01a1920b-575d-7b1d-b0c1-1278815e7056 [200 OK, 618B, 1ms]
+  ✓  status 200
+  ✓  status is CONFIRMED
+
+↳ One successful payment in Payment
+  GET http://localhost:5103/api/v1/payments?bookingId=01a1920b-575a-791c-86b9-6d9a44b9e3aa [200 OK, 486B, 3ms]
+  ✓  status 200
+  ✓  exactly one payment
+
+↳ Notifications for the booking
+  GET http://localhost:5104/api/v1/notifications?bookingId=01a1920b-575a-791c-86b9-6d9a44b9e3aa [200 OK, 1.42kB, 10ms]
+  ✓  status 200
+  ✓  confirmation queued
+
+↳ Cancel → refund per BR5
+  POST http://localhost:5102/api/v1/bookings/01a1920b-575a-791c-86b9-6d9a44b9e3aa/cancel [200 OK, 1.32kB, 33ms]
+  ✓  status 200
+  ✓  status is CANCELLED
+  ✓  refund > 0
+
+↳ Slot capacity returned after cancel
+  GET http://localhost:5101/api/v1/slots/01a1920b-56d9-7bcd-8809-611f3182b25c [200 OK, 497B, 3ms]
+  ✓  status 200
+  ✓  reserved is 0
+
+❏ 3. Failure cases
+↳ Create booking on slot 2
+  POST http://localhost:5102/api/v1/bookings [201 Created, 1.08kB, 14ms]
+  ✓  status 201
+
+↳ Payment gateway: decline everything
+  PUT http://localhost:5103/api/v1/admin/chaos [204 No Content, 117B, 2ms]
+  ✓  status 204
+
+↳ Pay → 402 PAYMENT_DECLINED, slot released
+  POST http://localhost:5102/api/v1/bookings/01a1920b-67f3-7f78-bb32-3f568b7f4e74/payment [402 Payment Required, 624B, 19ms]
+  ✓  status 402
+  ✓  code is PAYMENT_DECLINED
+
+↳ Payment gateway: back to normal
+  PUT http://localhost:5103/api/v1/admin/chaos [204 No Content, 117B, 3ms]
+  ✓  status 204
+
+↳ Booking is FAILED
+  GET http://localhost:5102/api/v1/bookings/01a1920b-67f3-7f78-bb32-3f568b7f4e74 [200 OK, 1.12kB, 4ms]
+  ✓  status 200
+  ✓  status is FAILED
+
+↳ Slot 2 capacity returned
+  GET http://localhost:5101/api/v1/slots/01a1920b-56da-78af-9109-b7b67a389566 [200 OK, 497B, 5ms]
+  ✓  status 200
+  ✓  reserved is 0
+
+↳ Unknown booking → 404
+  GET http://localhost:5102/api/v1/bookings/00000000-0000-0000-0000-000000000001 [404 Not Found, 509B, 4ms]
+  ✓  status 404
+  ✓  code is BOOKING_NOT_FOUND
+
+↳ Cancel an already failed booking → 409
+  POST http://localhost:5102/api/v1/bookings/01a1920b-67f3-7f78-bb32-3f568b7f4e74/cancel [409 Conflict, 522B, 7ms]
+  ✓  status 409
+  ✓  code is INVALID_STATE_TRANSITION
+
+❏ 4. Payment and Notification directly
+↳ Charge
+  POST http://localhost:5103/api/v1/payments [201 Created, 556B, 4ms]
+  ✓  status 201
+  ✓  status is SUCCEEDED
+
+↳ Partial refund
+  POST http://localhost:5103/api/v1/payments/01a1920b-6897-7fe5-bed3-c31b1bb0d3cc/refunds [201 Created, 918B, 6ms]
+  ✓  status 201
+  ✓  payment.status is PARTIALLY_REFUNDED
+
+↳ Refund more than remaining → 409
+  POST http://localhost:5103/api/v1/payments/01a1920b-6897-7fe5-bed3-c31b1bb0d3cc/refunds [409 Conflict, 572B, 6ms]
+  ✓  status 409
+  ✓  code is REFUND_EXCEEDS_PAYMENT
+
+↳ Send notification
+  POST http://localhost:5104/api/v1/notifications [202 Accepted, 706B, 3ms]
+  ✓  status 202
+  ✓  status is PENDING
+
+↳ Get chaos settings (Payment)
+  GET http://localhost:5103/api/v1/admin/chaos [200 OK, 232B, 1ms]
+  ✓  status 200
+
+❏ 5. Admin (Challenge 3B)
+↳ Run hold-expiry sweep now
+  POST http://localhost:5101/api/v1/admin/holds/expire-now [200 OK, 241B, 2ms]
+  ✓  status 200
+
+↳ Run it again (safe: expires nothing new)
+  POST http://localhost:5101/api/v1/admin/holds/expire-now [200 OK, 241B, 3ms]
+  ✓  status 200
+
+┌─────────────────────────┬─────────────────┬─────────────────┐
+│                         │        executed │          failed │
+├─────────────────────────┼─────────────────┼─────────────────┤
+│              iterations │               1 │               0 │
+├─────────────────────────┼─────────────────┼─────────────────┤
+│                requests │              38 │               0 │
+├─────────────────────────┼─────────────────┼─────────────────┤
+│            test-scripts │              38 │               0 │
+├─────────────────────────┼─────────────────┼─────────────────┤
+│      prerequest-scripts │              41 │               0 │
+├─────────────────────────┼─────────────────┼─────────────────┤
+│              assertions │              71 │               0 │
+├─────────────────────────┴─────────────────┴─────────────────┤
+│ total run duration: 4.7s                                    │
+├─────────────────────────────────────────────────────────────┤
+│ total data received: 16.57kB (approx)                       │
+├─────────────────────────────────────────────────────────────┤
+│ average response time: 8ms [min: 1ms, max: 50ms, s.d.: 9ms] │
+└─────────────────────────────────────────────────────────────┘

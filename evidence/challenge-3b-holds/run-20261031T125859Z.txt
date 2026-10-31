@@ -1,0 +1,143 @@
+Run:      c3b-20261031T125859Z
+Started:  2026-10-31T12:58:59Z
+Command:  scripts/challenge3b-holds.sh --ttl 30
+
+
+== Setup at 12:58:59: four bookings, each on its own slot (capacity 1), hold TTL 30s ==
+POST 5102/api/v1/bookings -> 201 {"status":"HELD","id":"01a1920a-bbd2-70b4-a2c8-3ed579f2f833"}
+  A (left unpaid):  booking 01a1920a-bbd2-70b4-a2c8-3ed579f2f833, hold expires 2026-10-31T12:59:29.4151893+00:00
+POST 5102/api/v1/bookings -> 201 {"status":"HELD","id":"01a1920a-bc3a-76f2-939e-7bc1ed693d00"}
+POST 5102/api/v1/bookings/01a1920a-bc3a-76f2-939e-7bc1ed693d00/payment -> 200 {"status":"CONFIRMED","id":"01a1920a-bc3a-76f2-939e-7bc1ed693d00"}
+  C (paid at once): booking 01a1920a-bc3a-76f2-939e-7bc1ed693d00 → CONFIRMED
+POST 5102/api/v1/bookings -> 201 {"status":"HELD","id":"01a1920a-bcbb-7605-a022-195536853002"}
+POST 5102/api/v1/bookings -> 201 {"status":"HELD","id":"01a1920a-bd25-7ca5-9f99-017e17917da7"}
+  E (pays late):    booking 01a1920a-bd25-7ca5-9f99-017e17917da7
+
+== D. Cancellation releases the hold immediately ==
+  PASS  slot D reserved before cancel (= 1)
+POST 5102/api/v1/bookings/01a1920a-bcbb-7605-a022-195536853002/cancel -> 200 {"status":"CANCELLED","id":"01a1920a-bcbb-7605-a022-195536853002"}
+  PASS  booking D (= CANCELLED)
+  PASS  hold D (= RELEASED)
+  PASS  slot D reserved right after cancel (= 0)
+
+== E. Late payment: start 6s before hold expiry, gateway takes 9s ==
+  (chaos on payment: failureRate=0 latencyMs=9000 mode=DECLINE)
+POST 5102/api/v1/bookings/01a1920a-bd25-7ca5-9f99-017e17917da7/payment -> 409 {"status":409,"code":"HOLD_EXPIRED"}
+  (chaos on payment: failureRate=0 latencyMs=0 mode=DECLINE)
+  PASS  late pay → 409 (= 409)
+  PASS  error code (= HOLD_EXPIRED)
+GET 5102/api/v1/bookings/01a1920a-bd25-7ca5-9f99-017e17917da7 -> 200 {"status":"EXPIRED","id":"01a1920a-bd25-7ca5-9f99-017e17917da7"}
+  PASS  booking E (= EXPIRED)
+  PASS  booking E refunded amount (= 50000)
+GET 5103/api/v1/payments?bookingId=01a1920a-bd25-7ca5-9f99-017e17917da7 -> 200 
+  PASS  payment E (charged once, then refunded) (= 1 REFUNDED)
+
+== A. Unpaid hold expires automatically ==
+  waiting for the expiry worker (TTL 30s + sweep interval)...
+  ... hold A EXPIRED after 0s
+  PASS  hold A (= EXPIRED)
+  PASS  slot A capacity returned (= 0)
+  ... booking A reconciled after 0s
+  PASS  booking A (= EXPIRED)
+  ... expiry notification after 0s
+GET 5104/api/v1/notifications?bookingId=01a1920a-bbd2-70b4-a2c8-3ed579f2f833 -> 200 {}
+  PASS  BOOKING_EXPIRED notification queued (= true)
+
+== B. Expiry job run twice ==
+POST 5101/api/v1/admin/holds/expire-now -> 200 {}
+POST 5101/api/v1/admin/holds/expire-now -> 200 {}
+  run 1 expired 0 hold(s) (the background worker had already done the work), run 2 expired 0
+  PASS  second run expires nothing (= 0)
+  PASS  slot A still 0 reserved (no double release) (= 0)
+
+== C. Paid hold is never released by expiry ==
+  PASS  hold C (= CONFIRMED)
+  PASS  slot C still reserved (= 1)
+  PASS  booking C (= CONFIRMED)
+
+== Database state (scheduling_db) ==
+              booking_id              |  status   |          expires_at           | capacity | reserved_count 
+--------------------------------------+-----------+-------------------------------+----------+----------------
+ 01a1920a-bbd2-70b4-a2c8-3ed579f2f833 | EXPIRED   | 2026-10-31 12:59:29.415189+00 |        1 |              0
+ 01a1920a-bc3a-76f2-939e-7bc1ed693d00 | CONFIRMED | 2026-10-31 12:59:29.517039+00 |        1 |              1
+ 01a1920a-bcbb-7605-a022-195536853002 | RELEASED  | 2026-10-31 12:59:29.645702+00 |        1 |              0
+ 01a1920a-bd25-7ca5-9f99-017e17917da7 | EXPIRED   | 2026-10-31 12:59:29.751582+00 |        1 |              0
+(4 rows)
+
+
+== Database state (booking_db) ==
+                  id                  |  status   | refunded_minor | failure_reason 
+--------------------------------------+-----------+----------------+----------------
+ 01a1920a-bbd2-70b4-a2c8-3ed579f2f833 | EXPIRED   |              0 | HOLD_EXPIRED
+ 01a1920a-bc3a-76f2-939e-7bc1ed693d00 | CONFIRMED |              0 | 
+ 01a1920a-bcbb-7605-a022-195536853002 | CANCELLED |              0 | 
+ 01a1920a-bd25-7ca5-9f99-017e17917da7 | EXPIRED   |          50000 | HOLD_EXPIRED
+(4 rows)
+
+
+== Expiry log lines ==
+-- slothub-scheduling
+12:59:25.706 - Hold 01a1920a-9d2f-7d70-9712-3c2ecdf64a87 for booking ba65d103-49b2-4cc0-b58f-c7da9582aef0 expired; capacity returned to slot 01a1920a-98e5-7cfd-8760-eb265885ddd5
+12:59:25.706 - Hold 01a1920a-9d2f-7c8f-92d3-83ea7463d183 for booking 18dd4a25-828a-4666-8b03-60cb32defb2c expired; capacity returned to slot 01a1920a-98e5-7cfd-8760-eb265885ddd5
+12:59:25.706 - Hold 01a1920a-9d31-7bea-9513-47c81523d9a2 for booking 960e52b4-cf12-4f27-9640-e499e51a443e expired; capacity returned to slot 01a1920a-98e5-7cfd-8760-eb265885ddd5
+12:59:25.706 - Hold 01a1920a-9d3f-7900-998c-596f2cf311e7 for booking 28d1b320-bd0b-4802-a65d-4121d6636ddf expired; capacity returned to slot 01a1920a-98e5-7cfd-8760-eb265885ddd5
+12:59:25.706 - Hold 01a1920a-a9e8-7432-abf0-49bda018149a for booking 6812114a-d4e1-441f-9c0e-68d5301c7615 expired; capacity returned to slot 01a1920a-a579-7b59-9add-bbd363b54f6d
+12:59:25.706 - Hold 01a1920a-a9ec-72fc-b800-fe30ac91d3fe for booking 5db615a7-0369-4b01-bad0-62efbdfab3b2 expired; capacity returned to slot 01a1920a-a579-7b59-9add-bbd363b54f6d
+12:59:25.706 - Hold 01a1920a-a9ea-7154-a80a-d7d3b43da21a for booking 229572fa-fa12-418f-8c71-7cfba84b3c98 expired; capacity returned to slot 01a1920a-a579-7b59-9add-bbd363b54f6d
+12:59:25.706 - Hold 01a1920a-a9f3-7ce7-834a-ec3966133845 for booking 86871f8b-6199-48fc-a5e7-cdbc0a555393 expired; capacity returned to slot 01a1920a-a579-7b59-9add-bbd363b54f6d
+12:59:25.706 - Hold 01a1920a-a9f0-74b9-98f7-594dcf72017b for booking 512026a7-c678-4d0c-bda1-5e2c6417e2da expired; capacity returned to slot 01a1920a-a579-7b59-9add-bbd363b54f6d
+12:59:25.706 - Hold 01a1920a-a9f6-7bc8-a8db-9dbc7da59914 for booking 023c504c-77d2-4615-a4f8-df939837f7cf expired; capacity returned to slot 01a1920a-a579-7b59-9add-bbd363b54f6d
+12:59:25.706 - Hold 01a1920a-a9f7-7a32-8acf-30bd9c010a84 for booking bb233997-2f55-4f48-b635-00edaa1fc833 expired; capacity returned to slot 01a1920a-a579-7b59-9add-bbd363b54f6d
+12:59:25.706 - Hold 01a1920a-a9f2-7218-8800-c119bcf69c84 for booking 2de5de85-e79d-4169-8d39-b996c6f47a4c expired; capacity returned to slot 01a1920a-a579-7b59-9add-bbd363b54f6d
+12:59:25.706 - Hold 01a1920a-a9f3-7680-9028-71a5025c76ad for booking 24eacaf9-7eaf-4721-93d7-89a4e0b0f850 expired; capacity returned to slot 01a1920a-a579-7b59-9add-bbd363b54f6d
+12:59:25.706 - Hold 01a1920a-a9f2-77b0-8759-be7012b54979 for booking 772278e9-660c-4fdd-b50e-fda0e0065e79 expired; capacity returned to slot 01a1920a-a579-7b59-9add-bbd363b54f6d
+12:59:25.706 - Hold 01a1920a-a9f5-75f4-8f2b-568bed224b45 for booking ac211a22-8402-4120-b34a-f9712d6daa09 expired; capacity returned to slot 01a1920a-a579-7b59-9add-bbd363b54f6d
+12:59:25.706 - Hold 01a1920a-a9f4-7148-ac6d-2329ede976eb for booking ad1bb99f-24fd-4eb0-8706-9b061e1d9174 expired; capacity returned to slot 01a1920a-a579-7b59-9add-bbd363b54f6d
+12:59:25.706 - Hold 01a1920a-a9f4-714b-9211-2974b09b1436 for booking 8b12cb3c-744f-4cbc-9989-a658ad0eda52 expired; capacity returned to slot 01a1920a-a579-7b59-9add-bbd363b54f6d
+12:59:25.706 - Hold 01a1920a-a9f5-7d1b-8d91-e54244adcd12 for booking aa954484-1588-45c4-a14e-c52814650274 expired; capacity returned to slot 01a1920a-a579-7b59-9add-bbd363b54f6d
+12:59:25.706 - Hold 01a1920a-a9f6-7901-b01c-1c00e7e85760 for booking aeccabb8-8f49-49b3-a0eb-0ecd96673d73 expired; capacity returned to slot 01a1920a-a579-7b59-9add-bbd363b54f6d
+12:59:25.706 - Hold 01a1920a-a9f6-786c-bd5d-e8fc75184186 for booking 5b7f03bb-6912-4526-b83f-151c2d000973 expired; capacity returned to slot 01a1920a-a579-7b59-9add-bbd363b54f6d
+12:59:25.706 - Hold 01a1920a-a9f7-7a2d-adb6-15841c71ef66 for booking 5401942d-a937-45f5-8b1e-e130edb5ecf9 expired; capacity returned to slot 01a1920a-a579-7b59-9add-bbd363b54f6d
+12:59:25.706 - Hold 01a1920a-a9f7-7c50-898b-1322819b27a3 for booking 793540f0-b5a2-4329-aa54-520daa0c038e expired; capacity returned to slot 01a1920a-a579-7b59-9add-bbd363b54f6d
+12:59:25.706 - Hold 01a1920a-a9f6-74a5-9bc2-93b34a1890ac for booking 173a3000-daf9-4044-bbdd-4cc7aecb2e90 expired; capacity returned to slot 01a1920a-a579-7b59-9add-bbd363b54f6d
+12:59:25.706 - Hold 01a1920a-a9f7-7ce3-aadc-a85afc95dba4 for booking 0710542d-e318-4604-8455-b815836fbe53 expired; capacity returned to slot 01a1920a-a579-7b59-9add-bbd363b54f6d
+12:59:25.706 - Hold 01a1920a-ac39-7cd7-b4b2-8ac397d0a88e for booking 01a1920a-ac37-7c6e-8d27-c11824f159de expired; capacity returned to slot 01a1920a-ac1e-7f3e-ab3d-f5e677729e17
+12:59:25.706 - Hold expiry sweep expired 26 hold(s)
+12:59:30.695 - Hold 01a1920a-bbd7-723e-8310-19932aad34b2 for booking 01a1920a-bbd2-70b4-a2c8-3ed579f2f833 expired; capacity returned to slot 01a1920a-bbb6-74ff-8ceb-acc2d1ca528a
+12:59:30.695 - Hold 01a1920a-bd27-7ea2-b06c-bb536b137d6b for booking 01a1920a-bd25-7ca5-9f99-017e17917da7 expired; capacity returned to slot 01a1920a-bd0c-7bf3-99d7-a54295b09f9b
+12:59:30.695 - Hold expiry sweep expired 2 hold(s)
+12:59:33.430 c3b-20261031T125859Z-7 Request rejected with "HOLD_EXPIRED": "Hold 01a1920a-bd27-7ea2-b06c-bb536b137d6b expired at 2026-10-31T12:59:29.7515820+00:00."
+-- slothub-booking
+12:58:59.420 c3b-20261031T125859Z-1 Booking 01a1920a-bbd2-70b4-a2c8-3ed579f2f833 HELD with hold 01a1920a-bbd7-723e-8310-19932aad34b2 until 10/31/2026 12:59:29 +00:00
+12:58:59.754 c3b-20261031T125859Z-5 Booking 01a1920a-bd25-7ca5-9f99-017e17917da7 HELD with hold 01a1920a-bd27-7ea2-b06c-bb536b137d6b until 10/31/2026 12:59:29 +00:00
+12:59:26.330 c3b-20261031T125859Z-7 Payment still processing an earlier attempt (poll 1); waiting
+12:59:27.336 c3b-20261031T125859Z-7 Payment still processing an earlier attempt (poll 2); waiting
+12:59:28.352 c3b-20261031T125859Z-7 Payment still processing an earlier attempt (poll 3); waiting
+12:59:29.365 c3b-20261031T125859Z-7 Payment still processing an earlier attempt (poll 4); waiting
+12:59:30.378 c3b-20261031T125859Z-7 Payment still processing an earlier attempt (poll 5); waiting
+12:59:30.914 - Booking 01a1920a-bbd2-70b4-a2c8-3ed579f2f833 reconciled to Expired (hold "EXPIRED")
+12:59:31.393 c3b-20261031T125859Z-7 Payment still processing an earlier attempt (poll 6); waiting
+12:59:32.407 c3b-20261031T125859Z-7 Payment still processing an earlier attempt (poll 7); waiting
+12:59:33.477 c3b-20261031T125859Z-7 Booking 01a1920a-bd25-7ca5-9f99-017e17917da7 EXPIRED: hold expired before confirmation; refunded 50000
+12:59:33.478 c3b-20261031T125859Z-7 Idempotency key "0ddc28a2-c1e2-4d02-8a21-c86a7f377ca5" stored with 409 for "POST /api/v1/bookings/01a1920a-bd25-7ca5-9f99-017e17917da7/payment"
+12:59:33.478 c3b-20261031T125859Z-7 HTTP "POST" "/api/v1/bookings/01a1920a-bd25-7ca5-9f99-017e17917da7/payment" responded 409 in 9608.1 ms
+12:59:33.529 c3b-20261031T125859Z-8 HTTP "GET" "/api/v1/bookings/01a1920a-bd25-7ca5-9f99-017e17917da7" responded 200 in 1.8 ms
+12:59:33.616 5099a015b3a943b8afed628bbb7a1aa9 HTTP "GET" "/api/v1/bookings/01a1920a-bbd2-70b4-a2c8-3ed579f2f833" responded 200 in 2.2 ms
+12:59:33.625 a54496a5bf7e49ef927e157e46e0a4b0 HTTP "GET" "/api/v1/bookings/01a1920a-bbd2-70b4-a2c8-3ed579f2f833" responded 200 in 1.4 ms
+-- slothub-payment
+12:59:26.327 c3b-20261031T125859Z-7 Idempotency key "pay-01a1920a-bd25-7ca5-9f99-017e17917da7" on "POST /api/v1/payments" is still being processed
+12:59:27.335 c3b-20261031T125859Z-7 Idempotency key "pay-01a1920a-bd25-7ca5-9f99-017e17917da7" on "POST /api/v1/payments" is still being processed
+12:59:28.350 c3b-20261031T125859Z-7 Idempotency key "pay-01a1920a-bd25-7ca5-9f99-017e17917da7" on "POST /api/v1/payments" is still being processed
+12:59:29.363 c3b-20261031T125859Z-7 Idempotency key "pay-01a1920a-bd25-7ca5-9f99-017e17917da7" on "POST /api/v1/payments" is still being processed
+12:59:30.376 c3b-20261031T125859Z-7 Idempotency key "pay-01a1920a-bd25-7ca5-9f99-017e17917da7" on "POST /api/v1/payments" is still being processed
+12:59:31.391 c3b-20261031T125859Z-7 Idempotency key "pay-01a1920a-bd25-7ca5-9f99-017e17917da7" on "POST /api/v1/payments" is still being processed
+12:59:32.405 c3b-20261031T125859Z-7 Idempotency key "pay-01a1920a-bd25-7ca5-9f99-017e17917da7" on "POST /api/v1/payments" is still being processed
+12:59:32.886 c3b-20261031T125859Z-7 Gateway approved 50000 "INR" for booking 01a1920a-bd25-7ca5-9f99-017e17917da7
+12:59:32.893 c3b-20261031T125859Z-7 Idempotency key "pay-01a1920a-bd25-7ca5-9f99-017e17917da7" stored with 201 for "POST /api/v1/payments"
+12:59:33.417 c3b-20261031T125859Z-7 Idempotency replay for key "pay-01a1920a-bd25-7ca5-9f99-017e17917da7" on "POST /api/v1/payments": returning stored 201
+12:59:33.475 c3b-20261031T125859Z-7 Idempotency key "refund-01a1920a-bd25-7ca5-9f99-017e17917da7" stored with 201 for "POST /api/v1/payments/01a1920b-1b68-7b9b-b701-369df78b47a5/refunds"
+
+Checks passed: 18, failed: 0
+Finished: 2026-10-31T12:59:33Z
+Saved to: evidence/challenge-3b-holds/run-20261031T125859Z.txt
+RESULT: PASS

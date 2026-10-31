@@ -82,5 +82,5 @@ exactly once because Booking sends `pay-{bookingId}` as the idempotency key."
 
 ## 9:00–9:30 — Close · [Member 1]
 
-"All 99 automated tests and every script pass; evidence and raw logs are in `evidence/`, and the README runs everything
+"All 101 automated tests and every script pass; evidence and raw logs are in `evidence/`, and the README runs everything
 from a fresh clone."

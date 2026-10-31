@@ -420,7 +420,7 @@ the retry with the same key then charges exactly once. This is the Challenge 3A 
 <h2>7. Testing</h2>
 <table class="small">
   <tr><th style="width:20%">Level</th><th>What</th><th style="width:24%">Result</th></tr>
-  <tr><td>Unit (xUnit)</td><td>Business rules named <code>BRn_…</code>, state machines, refund policy, fingerprinting, retry backoff, templates; Booking orchestration with in-memory fakes (declined, gateway down, late payment, lease busy, reconciliation)</td><td>90 pass (Scheduling 24, Booking 42, Payment 8, Notification 11, BuildingBlocks 5)</td></tr>
+  <tr><td>Unit (xUnit)</td><td>Business rules named <code>BRn_…</code>, state machines, refund policy, fingerprinting, retry backoff, templates; Booking orchestration with in-memory fakes (declined, gateway down, late payment, lease busy, reconciliation)</td><td>92 pass (Scheduling 24, Booking 42, Payment 8, Notification 13, BuildingBlocks 5)</td></tr>
   <tr><td>Integration (Testcontainers, real PostgreSQL)</td><td>Atomic hold under 20/50-way concurrency; expiry run twice, confirmed untouched, 4 concurrent sweepers; Payment API idempotency (replay, 422, 400, 20 simultaneous, 5xx release)</td><td>9 pass</td></tr>
   <tr><td>End-to-end script</td><td>Hold → pay → confirm → SMS + email; declined → FAILED, capacity restored; gateway down → 503, HELD, circuit open, recovery, one charge</td><td>26/26 checks</td></tr>
   <tr><td>Challenge scripts</td><td>§6</td><td>C1 PASS, C2 20/20, C3B 18/18</td></tr>
@@ -502,7 +502,7 @@ by the team. <span class="todo">[Team to confirm or edit this statement.]</span>
 <h2>Appendix E — How to run</h2>
 <pre>docker compose up -d --build --wait     # PostgreSQL (4 DBs, 4 users) + 4 services on localhost:5101–5104
 ./scripts/run-all-checks.sh             # tests, e2e, Challenges 1/2/3B, Postman, logs → evidence/
-dotnet test SlotHub.slnx                # 99 tests (Docker needed for the integration tests)</pre>
+dotnet test SlotHub.slnx                # 101 tests (Docker needed for the integration tests)</pre>
 <p class="small">Full instructions, every environment variable and troubleshooting: <code>README.md</code>. Evidence index: <code>evidence/README.md</code>.</p>
 
 <script src="assets/mermaid.min.js"></script>

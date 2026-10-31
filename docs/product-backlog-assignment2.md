@@ -19,7 +19,7 @@
 | Sprint | Dates (10 days) | Sprint goal | Points | Status |
 |---|---|---|---|---|
 | **Sprint 4** | Mon 2 Nov – Wed 11 Nov 2026 | Part A complete: hardened images with health checks and no committed secrets; one-command Compose deployment demonstrated (workflow, logs, health, restart); troubleshooting case written up with a reproducible demo. | 38 | ✅ Done (PBI-102 fresh-clone check moves to S5) |
-| **Sprint 5** | Thu 12 Nov – Sat 21 Nov 2026 | Part B: SlotHub on Minikube with the main workflow working through Kubernetes, plus scaling and self-healing; deployment report, video, submission. | 52 | Not started |
+| **Sprint 5** | Thu 12 Nov – Sat 21 Nov 2026 | Part B: SlotHub on Minikube with the main workflow working through Kubernetes, plus scaling and self-healing; deployment report, video, submission. | 52 | In Progress (all implementation ✅; team actions remain) |
 
 ### Sprint 4 scope
 E11 (PBI-095 → PBI-101), E12 (PBI-102 → PBI-106), E13 (PBI-107 → PBI-110).
@@ -34,17 +34,24 @@ E14 (PBI-111 → PBI-118), E15 (PBI-119 → PBI-121), E17 (PBI-126 → PBI-132).
 
 ---
 
+### Sprint 5 review
+- Minikube v1.39 / Kubernetes 1.37: `deploy/k8s/` (namespace, PostgreSQL StatefulSet + PVC, ConfigMaps, 4 migration Jobs using the new `MIGRATE_ONLY` mode, Deployments with startup/liveness/readiness probes, ClusterIP + LoadBalancer Services), Secret from `.env` via `scripts/k8s-deploy.sh`; images streamed into the node's containerd.
+- Workflow through Kubernetes 17/17 (e2e 26/26, Challenge 1 1-of-20); scaling + self-healing + readiness 17/17 (`evidence/a2-advanced-k8s/`). Scripts accept `PG_EXEC` for Kubernetes.
+- Problem met: stale images (built before `MIGRATE_ONLY`) made the migration Jobs run a web server; fixed by rebuilding; documented.
+- Deployment report `docs/report-a2/SlotHub-Deployment-Report.pdf` (4 pages incl. appendices), video script, README Option C; fresh-copy `docker compose up --build` verified. 101 tests pass.
+- **Team actions left:** Appendix A contributions + IDs, AI declaration confirmation, video (record + link), screenshots for `evidence/a2-*`, commits per member, submit.
+
 ## 2. Epic overview
 
 | Epic | Name | Brief | Sprint | Points | Status |
 |---|---|---|---|---|---|
 | E11 | Containerization | Part A Task 1 (3 marks) | S4 | 14 | ✅ Done |
-| E12 | Docker Compose deployment | Part A Task 2 (3 marks) | S4 | 14 | In Progress (fresh-clone foreground run pending) |
+| E12 | Docker Compose deployment | Part A Task 2 (3 marks) | S4 | 14 | ✅ Done |
 | E13 | Deployment troubleshooting (situated learning) | Part A Task 3 (3 marks) | S4 | 10 | ✅ Done |
-| E14 | Kubernetes on Minikube | Part B (2 marks) | S5 | 29 | New |
-| E15 | Scaling and self-healing | Part B (1 mark) | S5 | 6 | New |
+| E14 | Kubernetes on Minikube | Part B (2 marks) | S5 | 29 | ✅ Done |
+| E15 | Scaling and self-healing | Part B (1 mark) | S5 | 6 | ✅ Done |
 | E16 | Other advanced options | Part B (beyond the 3-mark cap) | — | — | Won't |
-| E17 | Deployment report, video and submission | Deliverables B, C | S5 | 17 | New |
+| E17 | Deployment report, video and submission | Deliverables B, C | S5 | 17 | In Progress (report, evidence, script ✅; team actions remain) |
 
 ---
 
@@ -80,7 +87,7 @@ E14 (PBI-111 → PBI-118), E15 (PBI-119 → PBI-121), E17 (PBI-126 → PBI-132).
 
 | ID | PBI | Acceptance criteria | SP | Pri | Sprint | Status |
 |---|---|---|---|---|---|---|
-| PBI-102 | `docker compose up --build` from a clean clone | Fresh clone + `cp .env.example .env` + `docker compose up --build` starts PostgreSQL and the 4 services with no other steps; documented in README | 2 | Must | S4 | In Progress (works; foreground run from a fresh clone checked in PBI-132) |
+| PBI-102 | `docker compose up --build` from a clean clone | Fresh clone + `cp .env.example .env` + `docker compose up --build` starts PostgreSQL and the 4 services with no other steps; documented in README | 2 | Must | S4 | ✅ Done (fresh copy: `docker compose up --build` foreground, e2e PASS, Ctrl+C stops cleanly) |
 | PBI-103 | Start-up ordering on health | Services wait for PostgreSQL **healthy**; Booking waits for Scheduling, Payment and Notification **healthy** (`depends_on: condition: service_healthy`); no connection errors in start-up logs | 2 | Must | S4 | ✅ Done |
 
 ### F12.2 Demonstration
@@ -120,24 +127,24 @@ Brief: "simply showing pods in Running state is not sufficient; the main applica
 
 | ID | PBI | Acceptance criteria | SP | Pri | Sprint | Status |
 |---|---|---|---|---|---|---|
-| PBI-111 | Minikube setup | Docs for `minikube start --driver=docker` with CPU/memory/disk settings; pre-check of free disk (≥ 15 GB); images built into Minikube (`eval $(minikube docker-env)` or `minikube image load`) | 2 | Must | S5 | New |
+| PBI-111 | Minikube setup | Docs for `minikube start --driver=docker` with CPU/memory/disk settings; pre-check of free disk (≥ 15 GB); images built into Minikube (`eval $(minikube docker-env)` or `minikube image load`) | 2 | Must | S5 | ✅ Done |
 
 ### F14.2 Manifests (`deploy/k8s/`)
 
 | ID | PBI | Acceptance criteria | SP | Pri | Sprint | Status |
 |---|---|---|---|---|---|---|
-| PBI-112 | Namespace, ConfigMaps and Secret | Namespace `slothub`; ConfigMap per service with non-secret env vars; DB passwords in a Secret created from `.env` by a script (`kubectl create secret --from-env-file`), **never committed** | 3 | Must | S5 | New |
-| PBI-113 | PostgreSQL in Kubernetes | StatefulSet + PVC + headless Service; init script from a ConfigMap creates 4 databases and 4 users; data survives pod restart | 5 | Must | S5 | New |
-| PBI-114 | Service Deployments with probes | Deployment per service: image, env from ConfigMap/Secret, liveness `/health`, readiness `/health/ready`, resource requests/limits | 5 | Must | S5 | New |
-| PBI-115 | Services and access | ClusterIP Service per service; Booking's downstream URLs use Kubernetes DNS names; external access via NodePort / `minikube service` / port-forward documented | 3 | Must | S5 | New |
-| PBI-116 | Database migrations in Kubernetes | Migrations run once per service before traffic (Kubernetes Job or init container), not concurrently from several replicas | 3 | Must | S5 | New |
+| PBI-112 | Namespace, ConfigMaps and Secret | Namespace `slothub`; ConfigMap per service with non-secret env vars; DB passwords in a Secret created from `.env` by a script (`kubectl create secret --from-env-file`), **never committed** | 3 | Must | S5 | ✅ Done |
+| PBI-113 | PostgreSQL in Kubernetes | StatefulSet + PVC + headless Service; init script from a ConfigMap creates 4 databases and 4 users; data survives pod restart | 5 | Must | S5 | ✅ Done |
+| PBI-114 | Service Deployments with probes | Deployment per service: image, env from ConfigMap/Secret, liveness `/health`, readiness `/health/ready`, resource requests/limits | 5 | Must | S5 | ✅ Done |
+| PBI-115 | Services and access | ClusterIP Service per service; Booking's downstream URLs use Kubernetes DNS names; external access via NodePort / `minikube service` / port-forward documented | 3 | Must | S5 | ✅ Done |
+| PBI-116 | Database migrations in Kubernetes | Migrations run once per service before traffic (Kubernetes Job or init container), not concurrently from several replicas | 3 | Must | S5 | ✅ Done |
 
 ### F14.3 Workflow through Kubernetes
 
 | ID | PBI | Acceptance criteria | SP | Pri | Sprint | Status |
 |---|---|---|---|---|---|---|
-| PBI-117 | Run the scripts against Minikube | `lib.sh` database helper works with `kubectl exec` as well as `docker exec`; `e2e-booking.sh` and the Challenge 1 script pass against the Minikube URLs; evidence in `evidence/a2-advanced-k8s/` | 5 | Must | S5 | New |
-| PBI-118 | Deploy and teardown scripts | `scripts/k8s-deploy.sh` (build images, create secret, apply manifests, wait for rollout) and `scripts/k8s-teardown.sh` | 3 | Must | S5 | New |
+| PBI-117 | Run the scripts against Minikube | `lib.sh` database helper works with `kubectl exec` as well as `docker exec`; `e2e-booking.sh` and the Challenge 1 script pass against the Minikube URLs; evidence in `evidence/a2-advanced-k8s/` | 5 | Must | S5 | ✅ Done |
+| PBI-118 | Deploy and teardown scripts | `scripts/k8s-deploy.sh` (build images, create secret, apply manifests, wait for rollout) and `scripts/k8s-teardown.sh` | 3 | Must | S5 | ✅ Done |
 
 ---
 
@@ -145,9 +152,9 @@ Brief: "simply showing pods in Running state is not sufficient; the main applica
 
 | ID | PBI | Acceptance criteria | SP | Pri | Sprint | Status |
 |---|---|---|---|---|---|---|
-| PBI-119 | Multiple replicas | Scheduling and Booking at 3 replicas (`kubectl scale`); log lines show requests served by different pods; Challenge 1 still exactly *N* successes (atomic DB update) and the hold-expiry worker on 3 replicas still releases each hold once (`SKIP LOCKED`) | 3 | Must | S5 | New |
-| PBI-120 | Self-healing | `kubectl delete pod` of a service → new pod created and ready (`kubectl get pods -w`); a booking flow run during/after the deletion succeeds | 2 | Must | S5 | New |
-| PBI-121 | Readiness protects traffic | Stopping PostgreSQL makes pods NotReady (removed from Service endpoints) and they return when it is back | 1 | Should | S5 | New |
+| PBI-119 | Multiple replicas | Scheduling and Booking at 3 replicas (`kubectl scale`); log lines show requests served by different pods; Challenge 1 still exactly *N* successes (atomic DB update) and the hold-expiry worker on 3 replicas still releases each hold once (`SKIP LOCKED`) | 3 | Must | S5 | ✅ Done |
+| PBI-120 | Self-healing | `kubectl delete pod` of a service → new pod created and ready (`kubectl get pods -w`); a booking flow run during/after the deletion succeeds | 2 | Must | S5 | ✅ Done |
+| PBI-121 | Readiness protects traffic | Stopping PostgreSQL makes pods NotReady (removed from Service endpoints) and they return when it is back | 1 | Should | S5 | ✅ Done |
 
 ---
 
@@ -166,13 +173,13 @@ Brief: "simply showing pods in Running state is not sufficient; the main applica
 
 | ID | PBI | Acceptance criteria | SP | Pri | Sprint | Status |
 |---|---|---|---|---|---|---|
-| PBI-126 | Container and deployment architecture diagram | Compose view (5 containers, network, volume, ports) and Kubernetes view (Deployments, Services, StatefulSet, ConfigMap/Secret) | 2 | Must | S5 | New |
-| PBI-127 | Deployment report (≤ 5 pages) | Sections: overview + diagram; containerization and Compose; troubleshooting (symptom, diagnosis, solution, validation, learning); advanced task + evidence; individual contribution summary and AI-use declaration<br>Built to PDF like the A1 report | 5 | Must | S5 | New |
-| PBI-128 | Evidence structure | `evidence/a2-task1-containerization/`, `a2-task2-compose/`, `a2-task3-troubleshooting/`, `a2-advanced-k8s/`, each with a README linking files to claims + screenshots | 2 | Must | S5 | New |
-| PBI-129 | Video script (6–8 min) | Build and deploy → running containers → main workflow → problem, diagnosis, fix → Minikube workflow, scaling, pod deletion; every member speaks | 2 | Must | S5 | New |
+| PBI-126 | Container and deployment architecture diagram | Compose view (5 containers, network, volume, ports) and Kubernetes view (Deployments, Services, StatefulSet, ConfigMap/Secret) | 2 | Must | S5 | ✅ Done |
+| PBI-127 | Deployment report (≤ 5 pages) | Sections: overview + diagram; containerization and Compose; troubleshooting (symptom, diagnosis, solution, validation, learning); advanced task + evidence; individual contribution summary and AI-use declaration<br>Built to PDF like the A1 report | 5 | Must | S5 | ✅ Done (draft, 4 pages; team fills Appendix A/B and video link) |
+| PBI-128 | Evidence structure | `evidence/a2-task1-containerization/`, `a2-task2-compose/`, `a2-task3-troubleshooting/`, `a2-advanced-k8s/`, each with a README linking files to claims + screenshots | 2 | Must | S5 | ✅ Done |
+| PBI-129 | Video script (6–8 min) | Build and deploy → running containers → main workflow → problem, diagnosis, fix → Minikube workflow, scaling, pod deletion; every member speaks | 2 | Must | S5 | ✅ Done (`docs/report-a2/demo-video-script.md`; rehearsal by team) |
 | PBI-130 | Record and publish video | Real terminal, 6–8 min, uploaded with link access | 3 | Must | S5 | New (team) |
-| PBI-131 | README deployment instructions | Compose and Minikube steps reproducible from a fresh clone; troubleshooting table | 2 | Must | S5 | New |
-| PBI-132 | Pre-submission check and submit | Fresh clone deploys with documented steps; no secrets committed; every member has commits; report, video and repo links submitted | 1 | Must | S5 | New (team) |
+| PBI-131 | README deployment instructions | Compose and Minikube steps reproducible from a fresh clone; troubleshooting table | 2 | Must | S5 | ✅ Done |
+| PBI-132 | Pre-submission check and submit | Fresh clone deploys with documented steps; no secrets committed; every member has commits; report, video and repo links submitted | 1 | Must | S5 | In Progress (fresh-copy deploy ✅; team: commits, links, submit) |
 
 ---
 

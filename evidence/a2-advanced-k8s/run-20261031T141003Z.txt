@@ -1,0 +1,195 @@
+Run:      verify-20261031T141003Z
+Started:  2026-10-31T14:10:03Z
+Command:  scripts/a2-k8s-verify.sh
+
+
+== 1. Kubernetes objects ==
+NAME       STATUS   ROLES           AGE   VERSION   INTERNAL-IP    EXTERNAL-IP   OS-IMAGE                         KERNEL-VERSION            CONTAINER-RUNTIME
+minikube   Ready    control-plane   25m   v1.37.0   192.168.49.2   <none>        Debian GNU/Linux 12 (bookworm)   7.0.14-linuxkit (arm64)   containerd://2.3.4
+
+NAME                           READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/booking        1/1     1            1           7m12s
+deployment.apps/notification   1/1     1            1           7m12s
+deployment.apps/payment        1/1     1            1           7m12s
+deployment.apps/scheduling     1/1     1            1           7m13s
+
+NAME                        READY   AGE
+statefulset.apps/postgres   1/1     13m
+
+NAME                             STATUS     COMPLETIONS   DURATION   AGE
+job.batch/migrate-booking        Complete   1/1           4s         7m17s
+job.batch/migrate-notification   Complete   1/1           4s         7m17s
+job.batch/migrate-payment        Complete   1/1           4s         7m17s
+job.batch/migrate-scheduling     Complete   1/1           4s         7m17s
+
+NAME                                    STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE
+persistentvolumeclaim/data-postgres-0   Bound    pvc-63290aed-d9ef-4ef4-ad35-afdb3fa7eba5   1Gi        RWO            standard       <unset>                 13m
+
+NAME                           READY   STATUS      RESTARTS   AGE     IP            NODE       NOMINATED NODE   READINESS GATES
+booking-7d9479b667-t62n8       1/1     Running     0          7m12s   10.244.0.13   minikube   <none>           <none>
+migrate-booking-k9vjg          0/1     Completed   0          7m17s   10.244.0.8    minikube   <none>           <none>
+migrate-notification-ggc8p     0/1     Completed   0          7m17s   10.244.0.9    minikube   <none>           <none>
+migrate-payment-rgnhz          0/1     Completed   0          7m17s   10.244.0.10   minikube   <none>           <none>
+migrate-scheduling-ccwnd       0/1     Completed   0          7m17s   10.244.0.11   minikube   <none>           <none>
+notification-bd4b5b657-vtfdl   1/1     Running     0          7m12s   10.244.0.15   minikube   <none>           <none>
+payment-795bd845d8-lf4fq       1/1     Running     0          7m12s   10.244.0.14   minikube   <none>           <none>
+postgres-0                     1/1     Running     0          13m     10.244.0.3    minikube   <none>           <none>
+scheduling-594f785b6d-8l4p9    1/1     Running     0          7m13s   10.244.0.12   minikube   <none>           <none>
+
+NAME                    TYPE           CLUSTER-IP       EXTERNAL-IP   PORT(S)          AGE
+booking                 ClusterIP      10.105.20.66     <none>        8080/TCP         7m12s
+booking-external        LoadBalancer   10.97.253.166    127.0.0.1     5102:30916/TCP   7m12s
+notification            ClusterIP      10.109.50.53     <none>        8080/TCP         7m12s
+notification-external   LoadBalancer   10.98.4.160      127.0.0.1     5104:32493/TCP   7m12s
+payment                 ClusterIP      10.108.70.155    <none>        8080/TCP         7m12s
+payment-external        LoadBalancer   10.104.233.0     127.0.0.1     5103:30227/TCP   7m12s
+postgres                ClusterIP      None             <none>        5432/TCP         13m
+scheduling              ClusterIP      10.107.199.237   <none>        8080/TCP         7m13s
+scheduling-external     LoadBalancer   10.107.106.130   127.0.0.1     5101:31930/TCP   7m12s
+  PASS  deployment/scheduling available (= true)
+  PASS  deployment/booking available (= true)
+  PASS  deployment/payment available (= true)
+  PASS  deployment/notification available (= true)
+  PASS  statefulset/postgres ready (= 1)
+  PASS  migration jobs completed (= 4)
+
+Secret slothub-db keys (values never printed): BOOKING_DB_PASSWORD, NOTIFICATION_DB_PASSWORD, PAYMENT_DB_PASSWORD, POSTGRES_ADMIN_PASSWORD, POSTGRES_ADMIN_USER, SCHEDULING_DB_PASSWORD
+
+== 2. Readiness through the Kubernetes Services (minikube tunnel → LoadBalancer → pods) ==
+GET 5101/health/ready -> 200 {"status":"HEALTHY"}
+  PASS  Scheduling ready (= HEALTHY)
+GET 5102/health/ready -> 200 {"status":"HEALTHY"}
+  PASS  Booking ready (= HEALTHY)
+GET 5103/health/ready -> 200 {"status":"HEALTHY"}
+  PASS  Payment ready (= HEALTHY)
+GET 5104/health/ready -> 200 {"status":"HEALTHY"}
+  PASS  Notification ready (= HEALTHY)
+
+== 3. One booking across pods, traced by correlation ID ==
+  PASS  booking 01a1924b-d144-7a2b-85d7-51701243e174 through Kubernetes (= CONFIRMED)
+-- booking (kubectl logs -l app.kubernetes.io/name=booking --prefix)
+  booking-7d9479b667-t62n8         Booking 01a1924b-d144-7a2b-85d7-51701243e174 HELD with hold 01a1924b-d1cd-73be-8b75-b8a4f18a82ca until 10/31/2026 14:10:
+  booking-7d9479b667-t62n8         Idempotency key "fca38463-7496-4d1c-ba3d-72a8359a4f84" stored with 201 for "POST /api/v1/bookings"
+  booking-7d9479b667-t62n8         HTTP "POST" "/api/v1/bookings" responded 201 in 257.7 ms
+  booking-7d9479b667-t62n8         Booking 01a1924b-d144-7a2b-85d7-51701243e174 CONFIRMED with payment 01a1924b-d2be-74c6-a4cf-8fc9b9d3c7eb
+  PASS  booking pod logged the traced request (= true)
+-- scheduling (kubectl logs -l app.kubernetes.io/name=scheduling --prefix)
+  scheduling-594f785b6d-8l4p9      Hold 01a1924b-d1cd-73be-8b75-b8a4f18a82ca reserved slot 01a1924b-d0b8-7eaf-af7e-7c6a133a1b25 for booking 01a1924b-d144-7
+  scheduling-594f785b6d-8l4p9      HTTP "POST" "/api/v1/holds" responded 201 in 40.2 ms
+  scheduling-594f785b6d-8l4p9      Hold 01a1924b-d1cd-73be-8b75-b8a4f18a82ca moved Held -> Confirmed; capacity returned: False
+  scheduling-594f785b6d-8l4p9      HTTP "POST" "/api/v1/holds/01a1924b-d1cd-73be-8b75-b8a4f18a82ca/confirm" responded 200 in 9.7 ms
+  PASS  scheduling pod logged the traced request (= true)
+-- payment (kubectl logs -l app.kubernetes.io/name=payment --prefix)
+  payment-795bd845d8-lf4fq         Gateway approved 50000 "INR" for booking 01a1924b-d144-7a2b-85d7-51701243e174
+  payment-795bd845d8-lf4fq         Idempotency key "pay-01a1924b-d144-7a2b-85d7-51701243e174" stored with 201 for "POST /api/v1/payments"
+  payment-795bd845d8-lf4fq         HTTP "POST" "/api/v1/payments" responded 201 in 222.4 ms
+  PASS  payment pod logged the traced request (= true)
+-- notification (kubectl logs -l app.kubernetes.io/name=notification --prefix)
+  notification-bd4b5b657-vtfdl     Notification 01a1924b-d4c4-7458-b19b-5d2cd4f60818 BookingConfirmed queued for booking 01a1924b-d144-7a2b-85d7-51701243e1
+  notification-bd4b5b657-vtfdl     HTTP "POST" "/api/v1/notifications" responded 202 in 98.8 ms
+  notification-bd4b5b657-vtfdl     Notification 01a1924b-d50e-78ae-aa8a-84aa8f715646 BookingConfirmed queued for booking 01a1924b-d144-7a2b-85d7-51701243e1
+  notification-bd4b5b657-vtfdl     HTTP "POST" "/api/v1/notifications" responded 202 in 2.5 ms
+  PASS  notification pod logged the traced request (= true)
+
+== 4. Main workflow end to end through Kubernetes (scripts/e2e-booking.sh) ==
+  │ Run:      e2e-20261031T141009Z
+  │ Started:  2026-10-31T14:10:09Z
+  │ Command:  scripts/e2e-booking.sh
+  │ 
+  │ 
+  │ == 0. All services healthy ==
+  │ GET 5101/health/ready -> 200 {"status":"HEALTHY"}
+  │   PASS  Scheduling ready (= HEALTHY)
+  │ GET 5102/health/ready -> 200 {"status":"HEALTHY"}
+  │   PASS  Booking ready (= HEALTHY)
+  │ GET 5103/health/ready -> 200 {"status":"HEALTHY"}
+  │   PASS  Payment ready (= HEALTHY)
+  │ GET 5104/health/ready -> 200 {"status":"HEALTHY"}
+  │   PASS  Notification ready (= HEALTHY)
+  │ 
+  │ == 1. Happy path: hold → pay → confirm → notify ==
+  │ POST 5102/api/v1/bookings -> 201 {"status":"HELD","id":"01a1924b-e680-7a5b-997a-b7fc532accae"}
+  │   PASS  create booking → 201 (= 201)
+  │   PASS  booking status (= HELD)
+  │ POST 5102/api/v1/bookings/01a1924b-e680-7a5b-997a-b7fc532accae/payment -> 200 {"status":"CONFIRMED","id":"01a1924b-e680-7a5b-997a-b7fc532accae"}
+  │   PASS  pay → 200 (= 200)
+  │   PASS  booking status (= CONFIRMED)
+  │   PASS  amount charged (= 50000)
+  │ GET 5101/api/v1/holds/01a1924b-e683-784a-93de-7b05c2f9877c -> 200 {"status":"CONFIRMED","id":"01a1924b-e683-784a-93de-7b05c2f9877c"}
+  │   PASS  hold status in Scheduling (= CONFIRMED)
+  │ GET 5101/api/v1/slots/01a1924b-e62e-748a-ac28-b6c2eb18e152 -> 200 {"id":"01a1924b-e62e-748a-ac28-b6c2eb18e152"}
+  │   PASS  slot reserved (= 1)
+  │ GET 5103/api/v1/payments?bookingId=01a1924b-e680-7a5b-997a-b7fc532accae -> 200 
+  │   PASS  payments for booking (= 1)
+  │   PASS  payment status (= SUCCEEDED)
+  │   ... confirmation SMS + email sent after 2s
+  │ GET 5104/api/v1/notifications?bookingId=01a1924b-e680-7a5b-997a-b7fc532accae -> 200 {}
+  │   PASS  BOOKING_CONFIRMED notifications sent (SMS + EMAIL) (= 2)
+  │   message: Your booking 01a1924b-e680-7a5b-997a-b7fc532accae on 2026-11-01 14:00 UTC is confirmed. Amount paid: INR 500.00.
+  │ 
+  │ == 2. Failure path: payment declined → booking FAILED, slot released ==
+  │ POST 5102/api/v1/bookings -> 201 {"status":"HELD","id":"01a1924b-f253-702a-89de-b661e9f298f8"}
+  │ GET 5101/api/v1/slots/01a1924b-f20d-72a5-b6fc-d88bb64c2d54 -> 200 {"id":"01a1924b-f20d-72a5-b6fc-d88bb64c2d54"}
+  │   PASS  slot reserved while HELD (= 1)
+  │   (chaos on payment: failureRate=1 latencyMs=0 mode=DECLINE)
+  │ POST 5102/api/v1/bookings/01a1924b-f253-702a-89de-b661e9f298f8/payment -> 402 {"status":402,"code":"PAYMENT_DECLINED"}
+  │   PASS  pay → 402 (= 402)
+  │   PASS  error code (= PAYMENT_DECLINED)
+  │   (chaos on payment: failureRate=0 latencyMs=0 mode=DECLINE)
+  │ GET 5102/api/v1/bookings/01a1924b-f253-702a-89de-b661e9f298f8 -> 200 {"status":"FAILED","id":"01a1924b-f253-702a-89de-b661e9f298f8"}
+  │   PASS  booking status (= FAILED)
+  │ GET 5101/api/v1/slots/01a1924b-f20d-72a5-b6fc-d88bb64c2d54 -> 200 {"id":"01a1924b-f20d-72a5-b6fc-d88bb64c2d54"}
+  │   PASS  slot capacity restored (= 0)
+  │ GET 5103/api/v1/payments?bookingId=01a1924b-f253-702a-89de-b661e9f298f8 -> 200 
+  │   PASS  declined payment recorded (= FAILED)
+  │ 
+  │ == 3. Failure path: payment gateway down → 503, booking stays HELD; retry with the same key succeeds once ==
+  │ POST 5102/api/v1/bookings -> 201 {"status":"HELD","id":"01a1924b-f4e4-7f51-bfef-678ca113f78f"}
+  │   (chaos on payment: failureRate=1 latencyMs=0 mode=ERROR)
+  │ POST 5102/api/v1/bookings/01a1924b-f4e4-7f51-bfef-678ca113f78f/payment -> 503 {"status":503,"code":"DOWNSTREAM_CIRCUIT_OPEN"}
+  │   PASS  pay while gateway down → 503 (after retries) (= 503)
+  │ GET 5102/api/v1/bookings/01a1924b-f4e4-7f51-bfef-678ca113f78f -> 200 {"status":"HELD","id":"01a1924b-f4e4-7f51-bfef-678ca113f78f"}
+  │   PASS  booking still HELD (= HELD)
+  │   (chaos on payment: failureRate=0 latencyMs=0 mode=DECLINE)
+  │ POST 5102/api/v1/bookings/01a1924b-f4e4-7f51-bfef-678ca113f78f/payment -> 503 {"status":503,"code":"DOWNSTREAM_CIRCUIT_OPEN"}
+  │   PASS  immediately after recovery the circuit is still open (= DOWNSTREAM_CIRCUIT_OPEN)
+  │   waiting 16 s for the circuit breaker to half-open...
+  │ POST 5102/api/v1/bookings/01a1924b-f4e4-7f51-bfef-678ca113f78f/payment -> 200 {"status":"CONFIRMED","id":"01a1924b-f4e4-7f51-bfef-678ca113f78f"}
+  │   PASS  retry same key after recovery → 200 (= 200)
+  │   PASS  booking status (= CONFIRMED)
+  │ GET 5103/api/v1/payments?bookingId=01a1924b-f4e4-7f51-bfef-678ca113f78f -> 200 
+  │   PASS  exactly one successful charge (= 1)
+  │ 
+  │ Checks passed: 26, failed: 0
+  │ Finished: 2026-10-31T14:10:31Z
+  │ Saved to: evidence/tests/run-20261031T141009Z.txt
+  │ RESULT: PASS
+  PASS  e2e-booking.sh against Kubernetes (= PASS)
+
+== 5. Challenge 1 through Kubernetes (20 simultaneous holds, capacity 1) ==
+  │ == Summary ==
+  │ 201 Created (held):            1   (expected 1)
+  │ 409 Conflict:                  19   (expected 19, all SLOT_UNAVAILABLE: 19)
+  │ Slot via API:                  {"capacity":1,"reserved":1,"remaining":0}
+  │ 
+  │ == Database state (scheduling_db) ==
+  │                   id                  | capacity | reserved_count | version 
+  │ --------------------------------------+----------+----------------+---------
+  │  01a1924c-3c3c-7add-9803-4a61baff1e28 |        1 |              1 |       1
+  │ (1 row)
+  │ 
+  │  status | count 
+  │ --------+-------
+  │  HELD   |     1
+  │ (1 row)
+  │ 
+  │ 
+  │ RESULT: PASS — exactly 1 of 20 concurrent requests succeeded; no over-allocation.
+  │ Finished:   2026-10-31T14:10:33Z
+  │ Saved to:   evidence/challenge-1-concurrency/run-20261031T141031Z-capacity1.txt
+  PASS  challenge1 against Kubernetes (= PASS)
+
+Checks passed: 17, failed: 0
+Finished: 2026-10-31T14:10:33Z
+Saved to: evidence/a2-advanced-k8s/run-20261031T141003Z.txt
+RESULT: PASS

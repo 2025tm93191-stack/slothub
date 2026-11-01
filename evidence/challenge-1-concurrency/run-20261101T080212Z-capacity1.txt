@@ -1,0 +1,52 @@
+== Challenge 1: concurrency control (BR1) ==
+Run:        c1-20261101T080212Z
+Started:    2026-11-01T08:02:12Z
+Command:    scripts/challenge1-concurrency.sh --capacity 1 --requests 20
+Target:     POST http://localhost:5101/api/v1/holds
+
+Seeded slot 01a19621-60d9-7c19-be4a-b214968404af with capacity 1
+
+Releasing 20 requests simultaneously at 08:02:13...
+
+#    HTTP   time(s)   result
+1    409    0.038640  SLOT_UNAVAILABLE
+2    409    0.052034  SLOT_UNAVAILABLE
+3    409    0.043477  SLOT_UNAVAILABLE
+4    409    0.052113  SLOT_UNAVAILABLE
+5    409    0.046098  SLOT_UNAVAILABLE
+6    409    0.038995  SLOT_UNAVAILABLE
+7    409    0.036455  SLOT_UNAVAILABLE
+8    409    0.028124  SLOT_UNAVAILABLE
+9    409    0.046068  SLOT_UNAVAILABLE
+10   409    0.040391  SLOT_UNAVAILABLE
+11   201    0.022451  HELD hold=01a19621-64ed-7048-ac53-a4df38e76ce9
+12   409    0.044995  SLOT_UNAVAILABLE
+13   409    0.034775  SLOT_UNAVAILABLE
+14   409    0.041958  SLOT_UNAVAILABLE
+15   409    0.058166  SLOT_UNAVAILABLE
+16   409    0.036326  SLOT_UNAVAILABLE
+17   409    0.040157  SLOT_UNAVAILABLE
+18   409    0.029625  SLOT_UNAVAILABLE
+19   409    0.043173  SLOT_UNAVAILABLE
+20   409    0.026463  SLOT_UNAVAILABLE
+
+== Summary ==
+201 Created (held):            1   (expected 1)
+409 Conflict:                  19   (expected 19, all SLOT_UNAVAILABLE: 19)
+Slot via API:                  {"capacity":1,"reserved":1,"remaining":0}
+
+== Database state (scheduling_db) ==
+                  id                  | capacity | reserved_count | version 
+--------------------------------------+----------+----------------+---------
+ 01a19621-60d9-7c19-be4a-b214968404af |        1 |              1 |       1
+(1 row)
+
+ status | count 
+--------+-------
+ HELD   |     1
+(1 row)
+
+
+RESULT: PASS — exactly 1 of 20 concurrent requests succeeded; no over-allocation.
+Finished:   2026-11-01T08:02:13Z
+Saved to:   evidence/challenge-1-concurrency/run-20261101T080212Z-capacity1.txt

@@ -1,0 +1,9 @@
+== Challenge 1: concurrency control (BR1) ==
+Run:        c1-20261101T075635Z
+Started:    2026-11-01T07:56:35Z
+Command:    scripts/challenge1-concurrency.sh --capacity 1 --requests 20
+Target:     POST http://localhost:5101/api/v1/holds
+
+Seeded slot 01a1961c-3cf4-7693-9422-0035283cdaac with capacity 1
+
+Releasing 20 requests simultaneously at 07:56:36...

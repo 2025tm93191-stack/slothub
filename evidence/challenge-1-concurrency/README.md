@@ -14,6 +14,7 @@ The hold is inserted in the same transaction. A `CHECK (reserved_count <= capaci
 | `run-20261031T125850Z-capacity5.txt` | 30 simultaneous requests on capacity 5 → **5 × 201, 25 × 409**; `reserved_count = 5`, five `HELD` rows |
 | `run-20261031T125853Z-capacity1-naive.txt` | **Counter-example**: the same load against a Scheduling instance started with `CONCURRENCY_MODE=naive` (read → check in C# → write) → **20 holds created for capacity 1** while `reserved_count` says 1 (lost updates) |
 | `run-20261101T080212Z-capacity1.txt`, `run-20261102T112727Z-capacity1-naive.txt`, `run-20261102T112936Z-capacity1-naive.txt` | Re-runs of the capacity-1 test and the naive counter-example, with the same results |
+| `run-20261101T075635Z-capacity1.txt` | Incomplete run kept on purpose: the script hung after "Releasing 20 requests" because a bare `wait` also waited for unrelated background jobs. Fixed by waiting only on the request PIDs; the next run (`080212Z`) passed |
 | `screenshots/` | Terminal captures with timestamps: the atomic run (`challenge-1-concurrecny.png`, run `080212Z`) and the naive counter-example (`02-naive-overbooking.png`, run `112936Z`) |
 
 Each file contains the per-request table (HTTP status, latency, hold ID or error code), the API view of the slot and the

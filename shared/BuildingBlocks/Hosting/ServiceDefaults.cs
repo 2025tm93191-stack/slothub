@@ -78,6 +78,12 @@ public static class ServiceDefaults
 
         app.MapOpenApi();
         app.MapScalarApiReference();
+        // Swagger UI at /swagger, reading the same built-in OpenAPI document (no second generator).
+        app.UseSwaggerUI(options =>
+        {
+            options.SwaggerEndpoint("/openapi/v1.json", $"SlotHub {serviceName} API");
+            options.DocumentTitle = $"SlotHub {serviceName} API";
+        });
         app.MapHealthEndpoints(serviceName);
         return app;
     }

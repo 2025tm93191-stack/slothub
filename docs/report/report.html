@@ -98,7 +98,7 @@ Booking: it loses the failing-dependency boundary and the second idempotency lay
 wrapper while authentication is out of scope. (4) Choreography with events only: the flow and its compensation would be
 scattered across services and harder to test (see D2).</p>
 
-<h2>3. Architecture</h2>
+<h2 id="architecture">3. Architecture</h2>
 <div class="figure">
 <pre class="mermaid">
 flowchart LR
@@ -131,7 +131,7 @@ It reads all configuration from environment variables and writes structured JSON
 That ID is forwarded on every outgoing call. Inside each service: <code>Api</code> (HTTP, validation) → <code>Domain</code> (entities, state machines,
 rules; no framework dependencies) ← <code>Infrastructure</code> (EF Core, HTTP clients, background workers).</p>
 
-<h3>Main transaction: happy path</h3>
+<h3 id="happy-path">Main transaction: happy path</h3>
 <div class="figure">
 <pre class="mermaid">
 sequenceDiagram
@@ -160,7 +160,7 @@ sequenceDiagram
 <div class="caption">Figure 2 — Two-step checkout (hold, then pay), as on a real payment page; it gives the hold a real lifetime for Challenge 3B.</div>
 </div>
 
-<h3>Main transaction: failure paths</h3>
+<h3 id="failure-paths">Main transaction: failure paths</h3>
 <div class="figure">
 <pre class="mermaid">
 sequenceDiagram
@@ -194,7 +194,7 @@ sequenceDiagram
 <div class="caption">Figure 3 — Failure paths, all demonstrated by scripts (e2e sections 2–3, Challenge 3B section E).</div>
 </div>
 
-<h3>State machines</h3>
+<h3 id="state-machines">State machines</h3>
 <div class="two">
 <div class="figure">
 <pre class="mermaid">

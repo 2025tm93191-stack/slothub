@@ -9,6 +9,7 @@
     <!-- Pinned above 2.7.4 for GHSA-v5pm-xwqc-g5wc (transitive via Microsoft.AspNetCore.OpenApi) -->
     <PackageVersion Include="Microsoft.OpenApi" Version="2.7.5" />
     <PackageVersion Include="Scalar.AspNetCore" Version="2.18.3" />
+    <PackageVersion Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.2.3" />
     <PackageVersion Include="FluentValidation" Version="12.1.1" />
     <PackageVersion Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1" />
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.11.0" />

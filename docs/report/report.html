@@ -491,7 +491,8 @@ instead of polling, and add OpenTelemetry tracing so a booking can be followed a
 the Notification service with its templates (including the booking reminder), the unit and integration tests for both services, and the
 evidence runs for Challenges 2 and 3B. <i>Hardest problem:</i> the Challenge 2 script sometimes hung during the concurrent
 idempotency test. It started the parallel requests in the background and then called a bare <code>wait</code>, which waits for
-<em>every</em> background job of the shell, not only the requests. Collecting the worker PIDs and waiting on those alone fixed it. A
+<em>every</em> background job of the shell, not only the requests. Collecting the worker PIDs and waiting on those alone fixed it, and I
+applied the same fix to the Challenge 1 script, which had the same bug. A
 similar timing issue made the Challenge 3B late-payment scenario flaky: it slept a fixed number of seconds after creating the hold, so
 on a slow machine the payment did not always finish after expiry. I changed it to read <code>holdExpiresAt</code> from the response,
 start paying 6 s before it and make the mock gateway take 9 s, so the payment always lands after the hold has expired.

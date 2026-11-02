@@ -1,0 +1,54 @@
+== Challenge 1: concurrency control (BR1) ==
+Run:        c1-20261102T112936Z
+Started:    2026-11-02T11:29:36Z
+Command:    scripts/challenge1-concurrency.sh --capacity 1 --requests 20 --naive
+Mode:       NAIVE check-then-update (demonstrates the failure; not the real implementation)
+Target:     POST http://localhost:5191/api/v1/holds
+
+Seeded slot 01a19c05-a1ea-7241-a1f2-cd41801cdf75 with capacity 1
+
+Releasing 20 requests simultaneously at 11:29:38...
+
+#    HTTP   time(s)   result
+1    201    0.161076  HELD hold=01a19c05-a694-7afb-a245-acf51c13d3e9
+2    201    0.158419  HELD hold=01a19c05-a6a5-7a6d-b3a9-7f1d595b3d79
+3    201    0.158609  HELD hold=01a19c05-a697-7802-9115-86263b9f2c22
+4    201    0.156708  HELD hold=01a19c05-a6a1-7769-8f10-2eb140a221af
+5    201    0.160054  HELD hold=01a19c05-a67e-75b8-b289-dd2eb9324324
+6    201    0.157110  HELD hold=01a19c05-a698-74f3-96d9-7d2c648e61fe
+7    201    0.164665  HELD hold=01a19c05-a69b-7640-a211-9f9b4a8e9e26
+8    201    0.154639  HELD hold=01a19c05-a695-724d-9c11-73833b3f4a1e
+9    201    0.156668  HELD hold=01a19c05-a696-7808-9bb9-423f99af641c
+10   201    0.158679  HELD hold=01a19c05-a685-76e0-b416-0d4e7bf24790
+11   201    0.166918  HELD hold=01a19c05-a68d-7d31-b804-44feb2e00f02
+12   201    0.158867  HELD hold=01a19c05-a69d-767e-8b72-7f5ad80bb10d
+13   201    0.163064  HELD hold=01a19c05-a69d-7f3c-9fae-2658971d0667
+14   201    0.156652  HELD hold=01a19c05-a68f-7543-be1b-ce2ee3b7d933
+15   201    0.155437  HELD hold=01a19c05-a697-76e5-8c28-9892da14be31
+16   201    0.157552  HELD hold=01a19c05-a692-71ec-b4ef-49dd07b7896a
+17   201    0.159856  HELD hold=01a19c05-a69f-7621-a193-57974d38988a
+18   201    0.161481  HELD hold=01a19c05-a68f-78fa-b525-a6f32db96dd0
+19   201    0.156999  HELD hold=01a19c05-a68f-7df0-b4ae-9133df175929
+20   201    0.163595  HELD hold=01a19c05-a689-765c-8ce4-15d0f5bff7be
+
+== Summary ==
+201 Created (held):            20   (expected 1)
+409 Conflict:                  0   (expected 19, all SLOT_UNAVAILABLE: 0)
+Slot via API:                  {"capacity":1,"reserved":1,"remaining":0}
+
+== Database state (scheduling_db) ==
+                  id                  | capacity | reserved_count | version 
+--------------------------------------+----------+----------------+---------
+ 01a19c05-a1ea-7241-a1f2-cd41801cdf75 |        1 |              1 |       0
+(1 row)
+
+ status | count 
+--------+-------
+ HELD   |    20
+(1 row)
+
+
+Holds created: 20 for capacity 1; reserved_count says 1.
+RESULT: OVER-ALLOCATED (expected in naive mode) — concurrent requests all read the old count, all passed
+        the capacity check in C#, and each wrote 'old + 1', so increments were lost.
+Saved to:   evidence/challenge-1-concurrency/run-20261102T112936Z-capacity1-naive.txt

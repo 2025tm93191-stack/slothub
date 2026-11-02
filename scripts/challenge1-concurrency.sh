@@ -56,6 +56,7 @@ echo
 
 # Barrier: every request blocks on a FIFO and all are released at the same instant.
 mkfifo "$work/go"
+worker_pids=()
 for i in $(seq 1 "$requests"); do
   (
     booking_id="$(uuidgen | tr '[:upper:]' '[:lower:]')"
@@ -64,12 +65,13 @@ for i in $(seq 1 "$requests"); do
       -H 'Content-Type: application/json' -H "X-Correlation-Id: $run_id-$i" \
       -X POST "$url/api/v1/holds" -d "{\"slotId\":\"$slot_id\",\"bookingId\":\"$booking_id\"}" >"$work/$i.status"
   ) &
+  worker_pids+=("$!")
 done
 sleep 1
 echo "Releasing $requests requests simultaneously at $(date -u +%H:%M:%S)..."
 exec 3>"$work/go"
 exec 3>&-
-wait
+wait "${worker_pids[@]}"
 
 printf '\n%-4s %-6s %-9s %s\n' "#" "HTTP" "time(s)" "result"
 for i in $(seq 1 "$requests"); do

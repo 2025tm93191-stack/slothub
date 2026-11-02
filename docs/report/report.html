@@ -38,8 +38,8 @@
 <h1>SlotHub — Design and Technical Report</h1>
 <table class="meta">
   <tr><td><b>Course</b></td><td>Scalable Services (SEZG583), Assignment 1</td></tr>
-  <tr><td><b>Team</b></td><td><span class="todo">[Member 1 (ID)], [Member 2 (ID)], [Member 3 (ID)], [Member 4 (ID)]</span></td></tr>
-  <tr><td><b>Repository</b></td><td><span class="todo">[GitHub URL]</span></td></tr>
+  <tr><td><b>Team</b></td><td>Subhodip Banerjee (2025TM93191), J K Shekar (2025TM93095), Ria Mishra (2025TM93010), Harshit Pathak (<span class="todo">[ID]</span>)</td></tr>
+  <tr><td><b>Repository</b></td><td><a href="https://github.com/2025tm93191-stack/slothub">github.com/2025tm93191-stack/slothub</a></td></tr>
   <tr><td><b>Demo video and documents</b></td><td><span class="todo">[Google Drive link]</span> (see §10)</td></tr>
   <tr><td><b>Stack</b></td><td>.NET 10, ASP.NET Core minimal APIs, EF Core 10, PostgreSQL 17, Polly (resilience), Serilog, xUnit, Testcontainers, Docker Compose</td></tr>
 </table>
@@ -457,36 +457,67 @@ the circuit breaker needing a recovery window, and two script bugs.</p>
 <table class="small">
   <tr><td style="width:30%">Google Drive (video, report, other documents)</td><td><span class="todo">[link]</span></td></tr>
   <tr><td>Demo video (8–10 min)</td><td><span class="todo">[link]</span></td></tr>
-  <tr><td>Source code</td><td><span class="todo">[GitHub URL]</span> — README, <code>docs/</code>, <code>evidence/</code>, <code>postman/</code></td></tr>
+  <tr><td>Source code</td><td><a href="https://github.com/2025tm93191-stack/slothub">github.com/2025tm93191-stack/slothub</a> — README, <code>docs/</code>, <code>evidence/</code>, <code>postman/</code></td></tr>
 </table>
 
 <div class="pagebreak"></div>
 <h2>Appendix A — Contribution table</h2>
 <table class="small">
   <tr><th>Member (ID)</th><th>Owned</th><th>Reviewed</th><th>Report / video parts</th><th>Share</th></tr>
-  <tr><td><span class="todo">[Member 1]</span></td><td>Scheduling service, Challenge 1</td><td>Booking</td><td>§2, §6 C1</td><td><span class="todo">[%]</span></td></tr>
-  <tr><td><span class="todo">[Member 2]</span></td><td>Booking service, Challenge 3B</td><td>Scheduling</td><td>§3, §6 C3B</td><td><span class="todo">[%]</span></td></tr>
-  <tr><td><span class="todo">[Member 3]</span></td><td>Payment service, idempotency (Challenge 2)</td><td>Notification</td><td>§5, §6 C2</td><td><span class="todo">[%]</span></td></tr>
-  <tr><td><span class="todo">[Member 4]</span></td><td>Notification service, platform, tests and evidence</td><td>Payment</td><td>§4, §7</td><td><span class="todo">[%]</span></td></tr>
+  <tr><td>Subhodip Banerjee (2025TM93191), 20 commits</td><td>Architecture and backlog, BuildingBlocks (errors, logging, correlation, idempotency),
+  Scheduling (catalog, atomic holds C1, expiry C3B), Booking orchestration (outbox, refunds), Testcontainers tests, scripts, CI, report</td>
+  <td>Payment, Notification</td><td>§1–3, §6 C1/C3B, §8</td><td>33⅓%</td></tr>
+  <tr><td>J K Shekar (2025TM93095), 27 commits</td><td>Payment domain and contracts, Notification service and templates, Payment/Notification
+  unit and integration tests, C2 and C3B evidence, test screenshots, architecture doc updates</td><td>Booking, Scheduling</td><td>§4, §6 C2, §7</td><td>33⅓%</td></tr>
+  <tr><td>Ria Mishra (2025TM93010), 18 commits</td><td>Payment service: entity, mock gateway, repository, endpoints, migration, Dockerfile,
+  payment and idempotency tests</td><td>Notification</td><td>§5</td><td>33⅓%</td></tr>
+  <tr><td>Harshit Pathak (<span class="todo">[ID]</span>)</td><td>—</td><td>—</td><td>—</td><td>0%</td></tr>
 </table>
-<p class="small">The split above is a suggestion matching one-service-per-member; replace it with what each member actually did (commit history is checked).</p>
 
 <h2>Appendix B — Individual reflections</h2>
 <p class="small">Half a page each: what I built, the hardest problem I solved, what I would change.</p>
-<p><b><span class="todo">[Member 1]</span>.</b> <span class="todo">[reflection]</span></p>
-<p><b><span class="todo">[Member 2]</span>.</b> <span class="todo">[reflection]</span></p>
-<p><b><span class="todo">[Member 3]</span>.</b> <span class="todo">[reflection]</span></p>
-<p><b><span class="todo">[Member 4]</span>.</b> <span class="todo">[reflection]</span></p>
+<p><b>Subhodip Banerjee (2025TM93191).</b> <i>What I built:</i> the architecture and backlog, the shared building blocks (errors,
+logging, correlation ID, idempotency middleware), the Scheduling service with its atomic holds and expiry worker, and the Booking
+orchestration with the outbox and refunds. <i>Hardest problem:</i> making the slot capacity safe under concurrency. My first instinct
+was to read the slot, check <code>reserved_count &lt; capacity</code> in C# and then insert the hold, but with 50 parallel requests that
+read-then-write lets several requests see the same free seat. Moving the check into one conditional
+<code>UPDATE … WHERE reserved_count &lt; capacity</code>, in the same transaction as the hold insert, turned the race into a row count of 0 or 1.
+I kept a naive mode behind a flag so the overbooking is visible in the demo. The second hard part was in Booking: pay, cancel and the
+expiry reconciler could act on the same booking at once. A per-booking lease (<code>locked_until</code>) serialises them, and writing the
+notification to an outbox in the same transaction means a crash cannot confirm a booking without notifying, or notify without confirming.
+<i>What I would change:</i> replace the polling outbox dispatcher and reconciler with a message broker so that services react to events
+instead of polling, and add OpenTelemetry tracing so a booking can be followed across services in one view instead of by correlation ID in logs.</p>
+<p><b>J K Shekar (2025TM93095).</b> <i>What I built:</i> the Payment domain model and service contracts, pagination and partial refunds,
+the Notification service with its templates (including the booking reminder), the unit and integration tests for both services, and the
+evidence runs for Challenges 2 and 3B. <i>Hardest problem:</i> the Challenge 2 script sometimes hung during the concurrent
+idempotency test. It started the parallel requests in the background and then called a bare <code>wait</code>, which waits for
+<em>every</em> background job of the shell, not only the requests. Collecting the worker PIDs and waiting on those alone fixed it. A
+similar timing issue made the Challenge 3B late-payment scenario flaky: it slept a fixed number of seconds after creating the hold, so
+on a slow machine the payment did not always finish after expiry. I changed it to read <code>holdExpiresAt</code> from the response,
+start paying 6 s before it and make the mock gateway take 9 s, so the payment always lands after the hold has expired.
+<i>What I would change:</i> move these timing scenarios into integration tests with a controllable clock instead of real sleeps, and
+add contract tests between Booking and Payment so an API change is caught before deployment.</p>
+<p><b>Ria Mishra (2025TM93010).</b> <i>What I built:</i> the core of the Payment service: the payment entity, the mock payment gateway,
+the repository, the HTTP endpoints, the initial EF Core migration and the Dockerfile, together with the payment unit tests and the
+idempotency integration tests. <i>Hardest problem:</i> making a charge happen exactly once. Booking may retry a charge after a timeout,
+and the client may retry too, so the same request can arrive twice or at the same moment. The idempotency tests prove each case
+against a real PostgreSQL container: a repeated key replays the original response without a second charge, the same key with a
+different body returns 422, two simultaneous identical requests charge once, and a 5xx releases the key so the retry can succeed. The
+mock gateway reads the chaos settings, so declines (402) and gateway outages (503) can be triggered to test Booking's error handling.
+<i>What I would change:</i> replace the mock with a sandbox of a real gateway behind the same interface, handle asynchronous
+gateway callbacks (webhooks) instead of assuming the charge result is immediate, and add a daily reconciliation job between our
+payment records and the gateway's.</p>
+<p><b>Harshit Pathak.</b> No contribution.</p>
 
 <h2>Appendix C — AI-use declaration</h2>
 <table class="small">
   <tr><th style="width:22%">Tool</th><th>Used for</th></tr>
   <tr><td>Claude (Anthropic), via Claude Code</td><td>Domain brainstorming and service decomposition options; drafting the architecture document and backlog; generating
   most of the C# code, EF Core migrations, tests, scripts, Postman collection and this report's first draft; diagnosing failures found by the tests.</td></tr>
-  <tr><td><span class="todo">[other tools, if any]</span></td><td><span class="todo">[…]</span></td></tr>
 </table>
+<p class="small">No other AI tools were used.</p>
 <p class="small">Every member reviewed, ran and can explain the code they present in the demo. All design decisions in §8 were discussed and accepted
-by the team. <span class="todo">[Team to confirm or edit this statement.]</span></p>
+by the team.</p>
 
 <h2>Appendix D — Business-rule traceability</h2>
 <table class="small">

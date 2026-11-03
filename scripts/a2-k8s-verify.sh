@@ -49,7 +49,7 @@ for app in booking scheduling payment notification; do
     while read -r pod json; do printf '  %-32s %s\n' "$pod" "$(jq -r '.["@m"]' <<<"$json" 2>/dev/null | cut -c1-120)"; done |
     grep -vE 'Execution attempt|HTTP "GET"' | head -4
   check "$app pod logged the traced request" true \
-    "$(kubectl -n "$ns" logs -l "app.kubernetes.io/name=$app" --tail=-1 2>/dev/null | grep -q "\"$trace\"" && echo true || echo false)"
+  "$(kubectl -n "$ns" logs -l "app.kubernetes.io/name=$app" --tail=-1 2>/dev/null | grep -F "\"$trace\"" >/dev/null && echo true || echo false)"
 done
 
 section "4. Main workflow end to end through Kubernetes (scripts/e2e-booking.sh)"

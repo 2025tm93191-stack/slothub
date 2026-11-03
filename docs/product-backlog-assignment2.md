@@ -177,7 +177,7 @@ Brief: "simply showing pods in Running state is not sufficient; the main applica
 | PBI-127 | Deployment report (≤ 5 pages) | Sections: overview + diagram; containerization and Compose; troubleshooting (symptom, diagnosis, solution, validation, learning); advanced task + evidence; individual contribution summary and AI-use declaration<br>Built to PDF like the A1 report | 5 | Must | S5 | ✅ Done (draft, 4 pages; team fills Appendix A/B and video link) |
 | PBI-128 | Evidence structure | `evidence/a2-task1-containerization/`, `a2-task2-compose/`, `a2-task3-troubleshooting/`, `a2-advanced-k8s/`, each with a README linking files to claims + screenshots | 2 | Must | S5 | ✅ Done |
 | PBI-129 | Video script (6–8 min) | Build and deploy → running containers → main workflow → problem, diagnosis, fix → Minikube workflow, scaling, pod deletion; every member speaks | 2 | Must | S5 | ✅ Done (`docs/report-a2/demo-video-script.md`; rehearsal by team) |
-| PBI-130 | Record and publish video | Real terminal, 6–8 min, uploaded with link access | 3 | Must | S5 | New (team) |
+| PBI-130 | Record and publish video | Real terminal, 6–8 min, uploaded with link access | 3 | Must | S5 | ✅ Done (one recording per member, linked in the report) |
 | PBI-131 | README deployment instructions | Compose and Minikube steps reproducible from a fresh clone; troubleshooting table | 2 | Must | S5 | ✅ Done |
 | PBI-132 | Pre-submission check and submit | Fresh clone deploys with documented steps; no secrets committed; every member has commits; report, video and repo links submitted | 1 | Must | S5 | In Progress (fresh-copy deploy ✅; team: commits, links, submit) |
 

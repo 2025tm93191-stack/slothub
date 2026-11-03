@@ -31,18 +31,56 @@
   .pagebreak { break-before: page; }
   .small { font-size: 8.4pt; }
   .toc { columns: 2; font-size: 9pt; margin: 4px 0 8px; }
+  .cover h1 { font-size: 22pt; margin: 0 0 2px; }
+  .cover .subtitle { font-size: 11pt; color: var(--muted); margin: 0 0 10px; }
+  .cover table { font-size: 10.2pt; margin: 4px 0 10px; }
+  .cover th, .cover td { padding: 4px 7px; vertical-align: middle; }
+  .cover thead th { background: var(--accent); color: #fff; border-color: var(--accent); font-size: 10.4pt; }
+  .cover tbody th { width: 24%; }
+  .cover .course-header { text-align: center; margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1.5px solid var(--accent); }
+  .cover .course { font-size: 15pt; font-weight: 700; color: var(--accent); }
+  .cover .group { font-size: 11.5pt; font-weight: 600; margin-top: 1px; }
+  .cover .assignment { font-size: 12.5pt; font-weight: 700; margin-top: 1px; }
+  .cover .date { font-size: 10pt; color: var(--muted); margin-top: 1px; }
+  .cover a { color: var(--accent); }
+  .cover .stack { font-size: 9.4pt; color: var(--muted); margin: 0 0 10px; }
+  .cover tbody th { width: 30%; }
 </style>
 </head>
 <body>
 
+<div class="cover">
+<div class="course-header">
+  <div class="course">Scalable Services (SEZG583)</div>
+  <div class="group">Scalable Services Group 23</div>
+  <div class="assignment">Assignment 1</div>
+  <div class="date">3 November 2026</div>
+</div>
 <h1>SlotHub — Design and Technical Report</h1>
-<table class="meta">
-  <tr><td><b>Course</b></td><td>Scalable Services (SEZG583), Assignment 1</td></tr>
-  <tr><td><b>Team</b></td><td>Subhodip Banerjee (2025TM93191), J K Shekar (2025TM93095), Ria Mishra (2025TM93010), Harshit Pathak (2025TM93557)</td></tr>
-  <tr><td><b>Repository</b></td><td><a href="https://github.com/2025tm93191-stack/slothub">github.com/2025tm93191-stack/slothub</a></td></tr>
-  <tr><td><b>Shared documents and videos</b></td><td><a href="https://drive.google.com/drive/folders/1daM99AjyiiTwf_5zDP_LFsxPC_0au-pV?usp=drive_link">Main Google Drive folder</a> (see §10)</td></tr>
-  <tr><td><b>Stack</b></td><td>.NET 10, ASP.NET Core minimal APIs, EF Core 10, PostgreSQL 17, Polly (resilience), Serilog, xUnit, Testcontainers, Docker Compose</td></tr>
+<p class="subtitle">Assignment 1: Microservices Design and Development</p>
+
+<table>
+  <thead><tr><th style="width:6%">#</th><th style="width:28%">Team member</th><th style="width:18%">BITS ID</th><th>Main contribution</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>Subhodip Banerjee</td><td>2025TM93191</td><td>Scheduling, Booking, shared building blocks, Challenges 1 and 3B</td></tr>
+    <tr><td>2</td><td>J K Shekar</td><td>2025TM93095</td><td>Payment, Notification, tests, Challenge 2 evidence</td></tr>
+    <tr><td>3</td><td>Ria Mishra</td><td>2025TM93010</td><td>Payment service, payment and idempotency tests</td></tr>
+    <tr><td>4</td><td>Harshit Pathak</td><td>2025TM93557</td><td>—</td></tr>
+  </tbody>
 </table>
+
+<table>
+  <thead><tr><th colspan="2">Links</th></tr></thead>
+  <tbody>
+    <tr><th>Repository</th><td><a href="https://github.com/2025tm93191-stack/slothub">github.com/2025tm93191-stack/slothub</a></td></tr>
+    <tr><th>Documents and videos (Drive)</th><td><a href="https://drive.google.com/drive/folders/1daM99AjyiiTwf_5zDP_LFsxPC_0au-pV?usp=drive_link">drive.google.com/drive/folders/1daM99AjyiiTwf_5zDP_LFsxPC_0au-pV</a></td></tr>
+    <tr><th>Demo: Subhodip Banerjee</th><td><a href="https://drive.google.com/file/d/1zJubB6u2nK4iz1c44ELd6BJD6N7-QN4P/view?usp=drive_link">drive.google.com/file/d/1zJubB6u2nK4iz1c44ELd6BJD6N7-QN4P/view</a></td></tr>
+    <tr><th>Demo: J K Shekar</th><td><a href="https://drive.google.com/file/d/1jmBtugeWTK5HwaKVv9CwCKbT2H5AC1UI/view?usp=drive_link">drive.google.com/file/d/1jmBtugeWTK5HwaKVv9CwCKbT2H5AC1UI/view</a></td></tr>
+    <tr><th>Demo: Ria Mishra</th><td><a href="https://drive.google.com/file/d/1XXrJP860TmP7rJJmzIhflMMfLspUbZXL/view?usp=drive_link">drive.google.com/file/d/1XXrJP860TmP7rJJmzIhflMMfLspUbZXL/view</a></td></tr>
+  </tbody>
+</table>
+<p class="stack"><b>Stack:</b> .NET 10, ASP.NET Core minimal APIs, EF Core 10, PostgreSQL 17, Polly, Serilog, xUnit, Testcontainers, Docker Compose</p>
+</div>
 
 <div class="toc">
 1. Problem and scope<br>2. Service decomposition<br>3. Architecture<br>4. Data design<br>5. API design<br>
@@ -458,7 +496,7 @@ the circuit breaker needing a recovery window, and two script bugs.</p>
   <tr><td style="width:30%">Google Drive (video, report, other documents)</td><td><a href="https://drive.google.com/drive/folders/1daM99AjyiiTwf_5zDP_LFsxPC_0au-pV?usp=drive_link">Main SlotHub Google Drive folder</a></td></tr>
   <tr><td>Individual demonstration videos</td><td>
     J K Shekar: <a href="https://drive.google.com/file/d/1jmBtugeWTK5HwaKVv9CwCKbT2H5AC1UI/view?usp=drive_link">Watch demonstration</a>,
-    Ria Mishra: <span class="todo">[ToDo — add video link]</span>,
+    Ria Mishra: <a href="https://drive.google.com/file/d/1XXrJP860TmP7rJJmzIhflMMfLspUbZXL/view?usp=drive_link">Watch demonstration</a>,
     Subhodip Banerjee: <a href="https://drive.google.com/file/d/1zJubB6u2nK4iz1c44ELd6BJD6N7-QN4P/view?usp=drive_link">Watch demonstration</a>
   </td></tr>
   <tr><td>Source code</td><td><a href="https://github.com/2025tm93191-stack/slothub">github.com/2025tm93191-stack/slothub</a> — README, <code>docs/</code>, <code>evidence/</code>, <code>postman/</code></td></tr>

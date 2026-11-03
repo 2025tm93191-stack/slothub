@@ -326,15 +326,15 @@ PBI-046, PBI-052, PBI-058, PBI-060, PBI-061, PBI-063, PBI-064, PBI-066 → PBI-0
 | PBI-074 | §5 API design | Endpoint table, sample requests/responses, error model, links to OpenAPI files | 2 | Must | S3 | 064 | ✅ Done |
 | PBI-075 | §6 Engineering challenges | Problem, design choice, alternatives, evidence links, limitations for C1, C2, C3B | 3 | Must | S3 | 067–069 | ✅ Done |
 | PBI-076 | §7–9 Testing, decisions, limitations | Test strategy and results; ≥ 3 trade-off decisions; limitations and future work | 3 | Must | S3 | 070 | ✅ Done |
-| PBI-077 | Appendices | Contribution table, half-page reflection per student, AI-use declaration | 2 | Must | S3 | — | In Progress (templates; team fills names, shares, reflections, confirms AI declaration) |
-| PBI-078 | §10 Links and PDF export | Google Drive link (video + docs); PDF exported; page count checked | 1 | Must | S3 | 080 | In Progress (PDF builds, 10 pages; Drive/GitHub links by team) |
+| PBI-077 | Appendices | Contribution table, half-page reflection per student, AI-use declaration | 2 | Must | S3 | — | ✅ Done (team table, reflections, AI declaration confirmed) |
+| PBI-078 | §10 Links and PDF export | Google Drive link (video + docs); PDF exported; page count checked | 1 | Must | S3 | 080 | ✅ Done (cover with team and links tables; Drive, GitHub and three demo links; PDF 11 pages) |
 
 ### F9.3 Demo video (8–10 min)
 
 | ID | PBI | Acceptance criteria | SP | Pri | Sprint | Depends | Status |
 |---|---|---|---|---|---|---|---|
 | PBI-079 | Video script and rehearsal | Script follows outline (1 min team, 2 min architecture, 3 min live flow + failure, 3 min challenge scripts); every member has a speaking part | 2 | Must | S3 | 059, 047, 053, 056 | In Progress (script ✅ `docs/report/demo-video-script.md`; rehearsal by team) |
-| PBI-080 | Record and publish video | Real terminal and API calls; 8–10 min; uploaded to Drive with link access | 3 | Must | S3 | 079 | New (team) |
+| PBI-080 | Record and publish video | Real terminal and API calls; 8–10 min; uploaded to Drive with link access | 3 | Must | S3 | 079 | ✅ Done (one recording per member, linked in the report) |
 
 ### F9.4 Submission
 

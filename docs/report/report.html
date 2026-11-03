@@ -40,7 +40,7 @@
   <tr><td><b>Course</b></td><td>Scalable Services (SEZG583), Assignment 1</td></tr>
   <tr><td><b>Team</b></td><td>Subhodip Banerjee (2025TM93191), J K Shekar (2025TM93095), Ria Mishra (2025TM93010), Harshit Pathak (2025TM93557)</td></tr>
   <tr><td><b>Repository</b></td><td><a href="https://github.com/2025tm93191-stack/slothub">github.com/2025tm93191-stack/slothub</a></td></tr>
-  <tr><td><b>Demo video and documents</b></td><td><span class="todo">[Google Drive link]</span> (see §10)</td></tr>
+  <tr><td><b>Shared documents and videos</b></td><td><a href="https://drive.google.com/drive/folders/1daM99AjyiiTwf_5zDP_LFsxPC_0au-pV?usp=drive_link">Main Google Drive folder</a> (see §10)</td></tr>
   <tr><td><b>Stack</b></td><td>.NET 10, ASP.NET Core minimal APIs, EF Core 10, PostgreSQL 17, Polly (resilience), Serilog, xUnit, Testcontainers, Docker Compose</td></tr>
 </table>
 
@@ -455,8 +455,12 @@ the circuit breaker needing a recovery window, and two script bugs.</p>
 
 <h2>10. Links</h2>
 <table class="small">
-  <tr><td style="width:30%">Google Drive (video, report, other documents)</td><td><span class="todo">[link]</span></td></tr>
-  <tr><td>Demo video (8–10 min)</td><td><span class="todo">[link]</span></td></tr>
+  <tr><td style="width:30%">Google Drive (video, report, other documents)</td><td><a href="https://drive.google.com/drive/folders/1daM99AjyiiTwf_5zDP_LFsxPC_0au-pV?usp=drive_link">Main SlotHub Google Drive folder</a></td></tr>
+  <tr><td>Individual demonstration videos</td><td>
+    J K Shekar: <a href="https://drive.google.com/file/d/1jmBtugeWTK5HwaKVv9CwCKbT2H5AC1UI/view?usp=drive_link">Watch demonstration</a>,
+    Ria Mishra: <span class="todo">[ToDo — add video link]</span>,
+    Subhodip Banerjee: <span class="todo">[ToDo — add video link]</span>
+  </td></tr>
   <tr><td>Source code</td><td><a href="https://github.com/2025tm93191-stack/slothub">github.com/2025tm93191-stack/slothub</a> — README, <code>docs/</code>, <code>evidence/</code>, <code>postman/</code></td></tr>
 </table>
 
@@ -471,7 +475,7 @@ the circuit breaker needing a recovery window, and two script bugs.</p>
   unit and integration tests, C2 and C3B evidence, test screenshots, architecture doc updates</td><td>Booking, Scheduling</td><td>§4, §6 C2, §7</td><td>33⅓%</td></tr>
   <tr><td>Ria Mishra (2025TM93010), 18 commits</td><td>Payment service: entity, mock gateway, repository, endpoints, migration, Dockerfile,
   payment and idempotency tests</td><td>Notification</td><td>§5</td><td>33⅓%</td></tr>
-  <tr><td>Harshit Pathak (<span class="todo">[ID]</span>)</td><td>—</td><td>—</td><td>—</td><td>0%</td></tr>
+  <tr><td>Harshit Pathak (2025TM93557)</td><td>—</td><td>—</td><td>—</td><td>0%</td></tr>
 </table>
 
 <h2>Appendix B — Individual reflections</h2>
@@ -508,7 +512,7 @@ mock gateway reads the chaos settings, so declines (402) and gateway outages (50
 <i>What I would change:</i> replace the mock with a sandbox of a real gateway behind the same interface, handle asynchronous
 gateway callbacks (webhooks) instead of assuming the charge result is immediate, and add a daily reconciliation job between our
 payment records and the gateway's.</p>
-<p><b>Harshit Pathak.</b> No contribution.</p>
+<p><b>Harshit Pathak (2025TM93557).</b> No contribution.</p>
 
 <h2>Appendix C — AI-use declaration</h2>
 <table class="small">
